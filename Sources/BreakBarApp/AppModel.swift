@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
 
     let policy: BreakPolicy
     let isDemoMode: Bool
+    let calendarMonitor = CalendarMonitor()
 
     private var engine: BreakBarEngine
     private let repository: SessionRepository?

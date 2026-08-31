@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidBecomeActive(_ notification: Notification) {
         model.refreshLaunchAtLoginStatus()
+        model.calendarMonitor.refresh()
     }
 
     private func configureStatusItem() {
@@ -99,6 +100,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     @objc private func reconcileAfterLifecycleChange(_ notification: Notification) {
         model.reconcileAfterLifecycleEvent()
+        model.calendarMonitor.refresh()
     }
 
     private func updateStatusItem() {

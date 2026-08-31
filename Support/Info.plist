@@ -22,6 +22,8 @@
     <string>1</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>BreakBar reads selected calendars to place breaks around meetings. It never edits events.</string>
     <key>LSUIElement</key>
     <true/>
 </dict>

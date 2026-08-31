@@ -41,6 +41,10 @@ struct BreakBarMenuView: View {
 
             Divider()
 
+            CalendarMenuSummary(monitor: model.calendarMonitor)
+
+            Divider()
+
             if let message = model.lastMessage {
                 Label(message, systemImage: "hourglass")
                     .font(.system(size: 12, weight: .medium))
@@ -90,6 +94,54 @@ struct BreakBarMenuView: View {
         }
         .frame(width: 360)
         .background(.ultraThinMaterial)
+    }
+}
+
+private struct CalendarMenuSummary: View {
+    @ObservedObject var monitor: CalendarMonitor
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "calendar")
+                .foregroundStyle(.secondary)
+                .frame(width: 16)
+
+            if let event = monitor.nextEvent {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(event.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Text(eventTiming(event))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                Text(calendarStatusText)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
+    }
+
+    private var calendarStatusText: String {
+        switch monitor.accessState {
+        case .fullAccess: "No upcoming selected events"
+        case .notDetermined: "Calendar not connected"
+        case .denied, .restricted, .writeOnly: "Calendar access unavailable"
+        case .unknown: "Calendar status unavailable"
+        }
+    }
+
+    private func eventTiming(_ event: UpcomingCalendarEvent) -> String {
+        if event.isAllDay { return "All day · \(event.calendarTitle)" }
+        let formatter = DateIntervalFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return "\(formatter.string(from: event.startDate, to: event.endDate)) · \(event.calendarTitle)"
     }
 }
 

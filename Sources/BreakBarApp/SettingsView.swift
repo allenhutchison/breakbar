@@ -30,6 +30,8 @@ struct SettingsView: View {
                 }
             }
 
+            CalendarSettingsSection(monitor: model.calendarMonitor)
+
             Section("Accessories") {
                 Text("No accessories installed")
                 Text("BUSY Bar support will be added as an optional plugin after hardware validation.")
@@ -38,11 +40,63 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 480, height: 410)
+        .frame(width: 520, height: 560)
     }
 
     private func duration(_ seconds: TimeInterval) -> String {
         if seconds < 60 { return "\(Int(seconds)) seconds" }
         return "\(Int(seconds / 60)) minutes"
+    }
+}
+
+private struct CalendarSettingsSection: View {
+    @ObservedObject var monitor: CalendarMonitor
+
+    var body: some View {
+        Section("Calendar") {
+            LabeledContent("Access", value: monitor.accessState.description)
+
+            switch monitor.accessState {
+            case .notDetermined:
+                Button("Connect Calendar", action: monitor.requestAccess)
+
+            case .fullAccess:
+                if monitor.calendars.isEmpty {
+                    Text("No event calendars are available.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(monitor.calendars) { calendar in
+                        Toggle(
+                            isOn: Binding(
+                                get: { monitor.isCalendarSelected(calendar.id) },
+                                set: { monitor.setCalendar(calendar.id, included: $0) }
+                            )
+                        ) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(calendar.title)
+                                Text(calendar.sourceTitle)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                }
+
+            case .denied, .restricted, .writeOnly:
+                Text("BreakBar needs full read access to plan around meetings. Update Calendar access in System Settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+            case .unknown:
+                Text("Calendar permission status is unavailable.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if let message = monitor.message {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        }
     }
 }
