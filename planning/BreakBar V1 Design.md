@@ -2,16 +2,19 @@
 
 ## Product and Technical Design
 
-**Status:** Implementation-ready draft  
-**Platform:** Native macOS menu-bar application  
-**Primary accessory:** BUSY Bar on the home LAN  
-**Last updated:** August 29, 2026
+**Status:** Implementation-ready draft
+
+**Platform:** Native macOS menu-bar application
+
+**Optional accessory:** BUSY Bar on the home LAN
+
+**Last updated:** August 31, 2026
 
 ---
 
 ## 1. Executive summary
 
-BreakBar is a native macOS menu-bar application that prevents long, uninterrupted periods of sitting while working from home. It combines a visible countdown, calendar-aware scheduling, live meeting detection, a deliberately disruptive full-screen overlay, and a BUSY Bar placed across the room as a physical acknowledgement control.
+BreakBar is a native macOS menu-bar application that prevents long, uninterrupted periods of sitting while working from home. It combines a Mac-driven visible countdown, calendar-aware scheduling, live meeting detection, and a deliberately disruptive full-screen overlay. Optional accessory plugins can mirror state and provide additional acknowledgement controls; the first supported accessory is a BUSY Bar placed across the room.
 
 The experience is built around a simple behavioral loop:
 
@@ -19,10 +22,27 @@ The experience is built around a simple behavioral loop:
 2. BreakBar plans the next break around calendar commitments while counting seated work and meeting time.
 3. Five minutes before a break, BreakBar warns the user and shows a countdown.
 4. When the break is due, a full-screen overlay interrupts work.
-5. The user must get up and press the BUSY Bar. That first press dismisses the overlay, starts the macOS screensaver, and begins a minimum five-minute break.
-6. After five minutes, the Bar changes from a minimum-break countdown to an extended-break count-up. A second Bar press ends the break and starts a fresh focus interval. An earlier press is rejected.
+5. The user starts the break from the Mac or a configured accessory. That action dismisses the overlay, starts the macOS screensaver, and begins a minimum five-minute break.
+6. After five minutes, the Mac changes from a minimum-break countdown to an extended-break count-up. The user returns from the Mac or a configured accessory to start a fresh focus interval. An earlier return is rejected.
 
-The BUSY Bar is also the family-facing status display. It shows `BUSY`, `MEET`, `BREAK`, `LUNCH`, `AWAY`, or `FREE`, with useful countdowns or elapsed time. The Mac remains the source of truth; the Bar is a remote display and physical input device.
+When installed, the BUSY Bar is also the family-facing status display. It shows `BUSY`, `MEET`, `BREAK`, `LUNCH`, `AWAY`, or `FREE`, with useful countdowns or elapsed time. The Mac is always the source of truth; accessory availability never changes the meaning or progress of a timer.
+
+### 1.1 Mac-first product boundary
+
+BreakBar must be complete and useful with no external hardware. The built-in Mac interaction is the baseline input/output plugin and cannot be disabled. Accessories may add remote presentation, sound, presence, or physical input, but they cannot own scheduling, persistence, or an otherwise unavailable transition.
+
+The accessory boundary is capability-based rather than BUSY-specific:
+
+```text
+BreakBar core ── presentation ──▶ Mac UI (always present)
+       │
+       └── presentation ──▶ Accessory plugins (zero or more)
+
+Mac commands ──────────────▶ typed app events
+Accessory input plugins ───▶ typed app events
+```
+
+V1 accessory plugins are trusted, compile-time Swift modules conforming to `BreakBarAccessory`. Dynamic third-party loading, process isolation, and a public plugin SDK are deferred until the protocol has been proven with real hardware.
 
 Calendar integration is required in V1. Scheduled meetings influence break placement, but calendar end times are not blindly trusted: recognized video-call or audio activity can keep the app in `MEETING` after a scheduled event ends. If a break is overdue when the actual call ends, the user still receives a five-minute warning before the overlay.
 
@@ -42,7 +62,7 @@ BreakBar is therefore not a conventional Pomodoro app. Its purpose is to enforce
 
 ### 2.1 Product principles
 
-- **Movement, not notification dismissal, is the success criterion.** Normal breaks begin only after a physical press on the Bar across the room.
+- **Movement is the goal; a working app is the prerequisite.** Mac controls provide the complete flow. A remote physical control can strengthen the movement contract when an accessory is configured.
 - **Five minutes is a minimum, not a fixed break length.** Longer walks are expected and welcomed.
 - **Calendar is a plan; live activity is evidence.** A scheduled meeting can predict a conflict, while active call audio may prove that the meeting is still happening.
 - **No surprise interruption during an active call.** A call may defer enforcement; when it ends, the normal five-minute warning is preserved.
@@ -59,7 +79,7 @@ BreakBar is therefore not a conventional Pomodoro app. Its purpose is to enforce
 
 1. Make the user stand up approximately once per hour during an explicitly started work session.
 2. Provide a native menu-bar countdown and a hard-to-ignore full-screen interruption on the single active display.
-3. Use the BUSY Bar over Wi-Fi as both a family-facing status sign and the primary physical break control.
+3. Support optional accessory plugins, beginning with the BUSY Bar over Wi-Fi as a family-facing status sign and remote physical break control.
 4. Respect scheduled meetings and detect actual call continuation beyond the calendar end.
 5. Pull a break forward when an upcoming meeting would otherwise consume its deadline.
 6. Model lunch, travel, offsite meetings, unclassified idle time, and clocked-out time separately from focus and normal breaks.
@@ -78,7 +98,7 @@ BreakBar is therefore not a conventional Pomodoro app. Its purpose is to enforce
 - Full timesheet, billing, payroll, or HR functionality.
 - Perfect recognition of every browser-based or unusual calling application.
 - Multi-device synchronization.
-- Automatic proof that the user walked; the physical Bar press is an intentional proxy.
+- Automatic proof that the user walked; a deliberate break-start action is the V1 proxy, strengthened by a remote accessory when configured.
 - Firmware modification. V1 uses the supported device interface only.
 
 ---
@@ -89,7 +109,7 @@ BreakBar is therefore not a conventional Pomodoro app. Its purpose is to enforce
 | --- | ---: | --- |
 | Target seated interval | 55 minutes | Preferred time from a completed break, lunch, or return until the next break begins |
 | Warning duration | 5 minutes | Wrap-up period before a normal break or travel departure |
-| Minimum normal break | 5 minutes | Earliest time the second Bar press may end a break |
+| Minimum normal break | 5 minutes | Earliest time the user may return to focus |
 | Maximum seated interval | 75 minutes | Best-effort ceiling when not in a live call or higher-priority transition |
 | Idle threshold | 10 minutes | Inactivity duration before time is tentatively classified as away |
 | Device refresh | 1 second or event stream | Maximum normal lag for visible countdown and input handling |
@@ -106,21 +126,19 @@ The 55-minute target is a preference. The 75-minute ceiling is enforced whenever
 
 The first launch is a short setup assistant:
 
-1. Explain the behavior and the two-press break loop.
+1. Explain the start-break / return-to-focus loop.
 2. Request Calendar access and select included calendars.
-3. Discover or enter the BUSY Bar’s reserved LAN address; verify firmware/API version and an optional local access PIN.
-4. Ask the user to place the Bar away from the desk and perform a button test.
-5. Test the front-display templates and colors.
-6. Explain call detection and show recognized applications.
-7. Optionally select the Obsidian vault, daily-note folder, and filename format.
-8. Offer launch-at-login.
-9. Run a two-minute guided dry run without writing work history.
+3. Explain call detection and show recognized applications.
+4. Optionally select the Obsidian vault, daily-note folder, and filename format.
+5. Offer launch-at-login.
+6. Run a two-minute guided dry run without writing work history.
+7. Optionally install and configure an accessory plugin. The BUSY plugin discovers or accepts the Bar’s reserved LAN address, verifies firmware/API version and credentials, tests the chosen input, and previews its display.
 
-Setup recommends a DHCP reservation on the router rather than a device-configured static address. Discovery by mDNS may be used, but the reserved address is the stable fallback.
+When the BUSY plugin is configured, setup recommends a DHCP reservation on the router rather than a device-configured static address. Discovery by mDNS may be used, but the reserved address is the stable fallback.
 
 ### 5.2 Clocked out
 
-BreakBar performs no break enforcement. The menu-bar item is neutral and offers `Clock In`. The Bar shows `FREE` or the user’s chosen neutral clock face. No calendar titles or call activity are logged while clocked out.
+BreakBar performs no break enforcement. The menu-bar item is neutral and offers `Clock In`. A connected Bar shows `FREE` or the user’s chosen neutral clock face. No calendar titles or call activity are logged while clocked out.
 
 Clock-in is explicit in V1. The app may suggest it when work-like activity or a selected-calendar meeting is observed, but it does not start a session automatically.
 
@@ -143,18 +161,18 @@ On clock-in or a completed return, a fresh focus interval begins. The menu-bar l
 - seated since;
 - next calendar constraint;
 - today’s focus, meeting, break, lunch, and away totals;
-- BUSY connection status;
+- accessory connection status;
 - `Take Break`, `Start Lunch`, `Go Away`, and `Clock Out` actions.
 
-The Bar shows `BUSY 42:18`. A color such as red may reinforce “do not interrupt,” but text is authoritative.
+A connected Bar shows `BUSY 42:18`. A color such as red may reinforce “do not interrupt,” but text is authoritative.
 
 ### 5.4 Normal break warning
 
 At five minutes before the planned break:
 
 - the menu-bar label changes to a warning form such as `⚠ 5:00`;
-- a short, non-modal centered notice and optional sound say “Break in 5 minutes—find a stopping point”;
-- the Bar remains family-facing `BUSY`, with a short countdown if it fits;
+- one macOS notification and one audible cue say “Break in 5 minutes—find a stopping point”;
+- a connected Bar remains family-facing `BUSY`, with a short countdown if it fits;
 - the state is logged as warning metadata, not as a separate working-time category.
 
 If a call begins during the warning, the warning is suspended and the meeting takes precedence. When the call actually ends, a new full five-minute warning begins if the break remains due.
@@ -164,19 +182,19 @@ If a call begins during the warning, the warning is suspended and the meeting ta
 At the planned break time, BreakBar displays a full-screen overlay on the active display:
 
 > **TIME TO GET UP**  
-> Press the BUSY Bar to start your break.
+> Start your break on this Mac or with a connected accessory.
 
-The overlay is visually dominant, avoids destructive app manipulation, and does not close or alter the user’s work. It blocks ordinary clicks from dismissing it. The menu bar and Bar show `BREAK`.
+The overlay is visually dominant, avoids destructive app manipulation, and does not close or alter the user’s work. It blocks ordinary clicks from dismissing it. The menu bar and connected display accessories show `BREAK`.
 
 The overlay always provides a visible safety escape, described in Section 16. It must never imitate a macOS login screen or hide how to regain control.
 
-### 5.6 Active break: the two-press contract
+### 5.6 Active break: the start/return contract
 
-The first valid Bar press in `BREAK_REQUIRED` performs one atomic transition:
+A valid `Start Break` command from the Mac or an accessory in `BREAK_REQUIRED` performs one atomic transition:
 
 1. persist `break_started_at`;
 2. remove the overlay;
-3. display `BREAK 5:00`, counting down the remaining minimum;
+3. display `BREAK 5:00` on the Mac and connected display accessories, counting down the remaining minimum;
 4. start the macOS screensaver on a best-effort basis;
 5. start the break interval.
 
@@ -187,13 +205,13 @@ BREAK +0:00
 BREAK +7:18
 ```
 
-The second Bar press ends the break only if at least five minutes have elapsed. If pressed early, BreakBar keeps the break active, optionally plays a gentle rejection sound, and briefly shows the remaining minimum, such as `2:13 MORE`.
+A `Return to Focus` command ends the break only if at least five minutes have elapsed. The Mac keeps that action disabled until then. If an accessory sends it early, BreakBar keeps the break active, optionally plays a gentle rejection sound, and briefly shows the remaining minimum, such as `2:13 MORE`.
 
-The break does not end because the Mac wakes, the screensaver exits, the mouse moves, or the app restarts. A valid second Bar press—or an explicit accessibility/failure fallback—ends it. Ending the break starts a fresh 55-minute interval.
+The break does not end because the Mac wakes, the screensaver exits, the mouse moves, or the app restarts. A deliberate `Return to Focus` command ends it. Ending the break starts a fresh 55-minute interval.
 
 ### 5.7 Meetings
 
-The Bar shows `MEET 18:42` during an in-progress scheduled meeting. If the calendar end passes while recognized call activity continues, it shows an elapsed overrun such as `MEET +03:12`.
+A connected Bar shows `MEET 18:42` during an in-progress scheduled meeting. If the calendar end passes while recognized call activity continues, it shows an elapsed overrun such as `MEET +03:12`.
 
 Meeting detection uses layered evidence:
 
@@ -214,21 +232,21 @@ Lunch may begin through:
 
 - `Start Lunch` in the menu;
 - classification of an idle interval;
-- a Bar action mapped during a configured lunch event;
+- an accessory action mapped during a configured lunch event;
 - a calendar-derived prompt at the start of an event classified as lunch.
 
-V1 does not force lunch merely because a calendar event starts while the user remains active. The event is strong default evidence, not permission to rewrite observed time. The Bar shows `LUNCH` or optionally `LUNCH +32m`; no return countdown is required. `End Lunch` starts a fresh focus interval.
+V1 does not force lunch merely because a calendar event starts while the user remains active. The event is strong default evidence, not permission to rewrite observed time. A connected Bar shows `LUNCH` or optionally `LUNCH +32m`; no return countdown is required. `End Lunch` starts a fresh focus interval.
 
 ### 5.9 Idle and unclassified away time
 
-After the configured idle threshold, BreakBar tentatively enters `AWAY_UNCLASSIFIED` and retroactively starts that interval at the last observed input time. The Bar shows `AWAY`. On return, the menu presents:
+After the configured idle threshold, BreakBar tentatively enters `AWAY_UNCLASSIFIED` and retroactively starts that interval at the last observed input time. A connected Bar shows `AWAY`. On return, the menu presents:
 
 > You were away for 48 minutes.  
 > **Lunch · Break · Other away · Count as work**
 
-If the interval overlaps a classified lunch event, `Lunch` is preselected. If it overlaps travel, travel rules take precedence and no ambiguous prompt is shown. A normal Bar-started break is already classified and never generates this prompt.
+If the interval overlaps a classified lunch event, `Lunch` is preselected. If it overlaps travel, travel rules take precedence and no ambiguous prompt is shown. A deliberately started break is already classified and never generates this prompt.
 
-`Count as work` restores the interval as focus or meeting according to contemporaneous evidence. `Break` counts as a break but does not fabricate the two-press enforcement history. `Other away` remains inside the clocked-in span but is excluded from actual working time.
+`Count as work` restores the interval as focus or meeting according to contemporaneous evidence. `Break` counts as a break but does not fabricate start/return enforcement history. `Other away` remains inside the clocked-in span but is excluded from actual working time.
 
 ### 5.10 Travel and offsite meetings
 
@@ -243,12 +261,12 @@ Five minutes before it begins:
 At the travel start:
 
 - a full-screen `TIME TO GO` overlay appears, including the next event/location when allowed;
-- the Bar changes immediately to `AWAY`;
+- connected display accessories change immediately to `AWAY`;
 - the focus/break scheduler is suspended;
 - seated-time accumulation stops;
 - an interval of type `travel` begins.
 
-Unlike a normal break, travel does not require a Bar press. The overlay can be acknowledged with a deliberate Mac action, a Bar press, or trusted evidence that the Mac has left the home environment. This avoids trapping the user while carrying the laptop out.
+Unlike a normal break, travel does not require a separate break-start command. The overlay can be acknowledged with a deliberate Mac action, an accessory action, or trusted evidence that the Mac has left the home environment. This avoids trapping the user while carrying the laptop out.
 
 An adjacent meeting marked offsite, or a meeting linked between outbound and return travel blocks, keeps the family-facing state `AWAY`. It is logged as a meeting with `location_context = away`, so reporting can distinguish travel from offsite meeting time without advertising `MEETING` on a Bar left at home.
 
@@ -279,7 +297,7 @@ Derived output maps the combination to menu-bar, overlay, and Bar presentations.
 
 - `CLOCKED_IN + MEETING + AWAY` → log offsite meeting, suspend scheduler, Bar `AWAY`.
 - `CLOCKED_IN + FOCUS + HOME + BREAK_WARNING` → count focus, menu warning, Bar `BUSY`.
-- `CLOCKED_IN + BREAK + HOME` → break countdown/count-up, no overlay after first press.
+- `CLOCKED_IN + BREAK + HOME` → break countdown/count-up, no overlay after the break-start command.
 
 ### 6.2 Authoritative state snapshot
 
@@ -314,9 +332,9 @@ All actions are serialized through a single scheduler/state-machine actor. UI, d
 | Focus | Planned break − 5m | Break warning | Notice; warning countdown |
 | Break warning | Planned break reached; no call/travel | Break required | Persist; show overlay; Bar `BREAK` |
 | Break warning/required | Live call begins | Meeting; enforcement none | Remove normal overlay if necessary; recompute after call |
-| Break required | First valid Bar press | Break active | Commit start; hide overlay; start screensaver; minimum countdown |
-| Break active, <5m | Bar press | No state change | Reject; show remaining time |
-| Break active, ≥5m | Bar press | Focus | Close break; fresh cycle |
+| Break required | Start Break from Mac/accessory | Break active | Commit start; hide overlay; start screensaver; minimum countdown |
+| Break active, <5m | Return command | No state change | Reject; show remaining time |
+| Break active, ≥5m | Return command | Focus | Close break; fresh cycle |
 | Focus/warning | Meeting starts | Meeting | Suppress normal enforcement; continue seated accumulation |
 | Meeting | Calendar ends, call still active | Meeting overrun | Keep `MEETING`; show elapsed overrun |
 | Meeting | Call/calendar evidence ends; break overdue | Break warning | Begin a full new five-minute warning |
@@ -494,7 +512,7 @@ After the calendar event ends, only actual call evidence prolongs it. After the 
 
 ---
 
-## 10. BUSY Bar integration
+## 10. BUSY Bar accessory plugin
 
 ### 10.1 Responsibility boundary
 
@@ -528,7 +546,7 @@ The built-in device Pomodoro timer is not authoritative in V1. It may be disable
 
 ### 10.3 Device adapter
 
-All firmware-specific code sits behind `BusyBarClient`:
+All firmware-specific code sits behind the `BusyBarAccessory` implementation:
 
 ```text
 discover() -> [Device]
@@ -598,7 +616,7 @@ macOS prevents third-party apps from creating a truly unbreakable kiosk without 
 
 ### 11.3 Screensaver
 
-On the first normal-break press, request the system screensaver using the least brittle supported mechanism available for the deployment target. Launching `ScreenSaverEngine` directly may work but is not a stable public product contract; treat it as an implementation to validate across supported macOS versions. If initiation fails, the break still starts and the error is logged. Optionally offer “lock screen instead” as an explicit user setting, never as the default.
+When the normal break starts, request the system screensaver using the least brittle supported mechanism available for the deployment target. Launching `ScreenSaverEngine` directly may work but is not a stable public product contract; treat it as an implementation to validate across supported macOS versions. If initiation fails, the break still starts and the error is logged. Optionally offer “lock screen instead” as an explicit user setting, never as the default.
 
 Break state is independent of screensaver state. Waking the Mac does not end the break.
 
@@ -623,8 +641,8 @@ Use monotonic time for live countdowns and UTC timestamps for durable records. T
 EventKit ───────────────┐
 Core Audio ─────────────┤
 Idle / presence ────────┤     immutable state     MenuBar UI
-User commands ──────────┼──▶ Scheduler Actor ───▶ Overlay Controller
-BUSY input ─────────────┤           │             BUSY Presenter
+Mac commands ───────────┼──▶ Scheduler Actor ───▶ Mac UI + Overlay
+Accessory input ────────┤           │             Accessory Coordinator
 Sleep/wake/time ────────┘           │
                                     ▼
                               SQLite Store
@@ -642,8 +660,9 @@ Sleep/wake/time ────────┘           │
 | `CalendarProvider` | EventKit permission, fetch, change notifications, classification |
 | `CallActivityProvider` | Live call evidence and confidence |
 | `IdlePresenceProvider` | Idle time and home/away evidence |
-| `BusyBarClient` | Discovery, authentication, capabilities, display, input, reconnect |
-| `PresentationCoordinator` | Maps state snapshot to menu, overlay, sound, and Bar models |
+| `AccessoryCoordinator` | Connects zero or more optional capability-based plugins and maps their input to typed events |
+| `BusyBarAccessory` | BUSY-specific discovery, authentication, capabilities, display, input, and reconnect |
+| `PresentationCoordinator` | Maps state snapshots to Mac and accessory-neutral presentation models |
 | `OverlayController` | AppKit window lifecycle and safety escape |
 | `SessionRepository` | SQLite migrations and transactional interval storage |
 | `SummaryService` | Daily/category totals and correction-aware recomputation |
@@ -935,12 +954,12 @@ Generate random event streams and assert:
 - Menu-bar legibility and countdown updates.
 - Color-blind-safe meaning: every state is understandable from text alone.
 
-### 19.5 Real-hardware acceptance tests
+### 19.5 BUSY accessory acceptance tests
 
-Run against the actual purchased Bar and exact shipping firmware, then latest stable firmware:
+Required to ship the BUSY accessory plugin, but not to ship or use the Mac app. Run against the actual purchased Bar and exact shipping firmware, then latest stable firmware:
 
 1. sustained eight-hour connection test;
-2. 100 first/second press cycles with latency and duplicate detection;
+2. 100 start/return input cycles with latency and duplicate detection;
 3. Wi-Fi roam, router reboot, DHCP renewal, Bar reboot, and Mac sleep/wake;
 4. every display template at expected brightness and viewing distance;
 5. coexistence with device web UI/built-in apps;
@@ -951,7 +970,7 @@ Run against the actual purchased Bar and exact shipping firmware, then latest st
 
 - A meeting scheduled to end at 10:30 continues until 10:47; warning begins at 10:47 and overlay at 10:52.
 - A meeting starting at 11:00 would cover a 11:05 break; warning starts at 10:50, break at 10:55, and minimum ends at 11:00.
-- The first Bar press removes the overlay and starts screensaver; a press at 2:30 is rejected; a press at 12:00 ends break.
+- Starting the break on the Mac removes the overlay and starts screensaver; return is unavailable at 2:30 and succeeds at 12:00. Repeat through an accessory when one is installed.
 - A 10:30 travel block warns at 10:25, forces `TIME TO GO` at 10:30, suppresses the 10:32 normal break, remains `AWAY` through the offsite meeting, and starts fresh on return.
 - A forgotten 48-minute lunch becomes idle away and is easily reclassified to lunch without corrupting totals.
 
@@ -959,14 +978,14 @@ Run against the actual purchased Bar and exact shipping firmware, then latest st
 
 ## 20. Milestones
 
-### Milestone 0 — Hardware spike
+### Parallel accessory spike — after hardware arrives
 
 - Unbox/update the Bar.
 - Capture device-hosted OpenAPI and capability/version information.
 - Prove Wi-Fi discovery/authentication, text rendering, and chosen button event.
 - Measure input/display latency and reboot behavior.
 
-**Exit:** A command-line harness can render a revisioned state and reliably observe one physical press on the actual device.
+**Exit:** A command-line harness can render a revisioned state and reliably observe one physical press on the actual device. This does not gate the Mac milestones.
 
 ### Milestone 1 — Native shell and core loop
 
@@ -977,14 +996,14 @@ Run against the actual purchased Bar and exact shipping firmware, then latest st
 
 **Exit:** Mac-only flow completes a work/break cycle and survives restart.
 
-### Milestone 2 — Physical break contract
+### Milestone 2 — Optional BUSY accessory
 
-- BUSY client adapter, reconnect, display templates, press debounce.
-- First-press overlay dismissal and screensaver request.
-- Five-minute minimum, extended count-up, valid second press.
+- BUSY accessory plugin, reconnect, display templates, and input debounce.
+- Accessory-originated start and return commands through the same state-machine path as Mac commands.
+- Five-minute minimum, extended count-up, and early-return feedback.
 - Failure fallback and stale-display treatment.
 
-**Exit:** The two-press loop works reliably over Wi-Fi for a full day.
+**Exit:** The remote start/return loop works reliably over Wi-Fi for a full day, and disconnecting the Bar does not alter the Mac flow.
 
 ### Milestone 3 — Calendar and live meetings
 
@@ -1037,7 +1056,7 @@ Run against the actual purchased Bar and exact shipping firmware, then latest st
 5. Should travel departure acknowledgement auto-clear when the Bar becomes unreachable, or require a Mac action to avoid network-failure false positives?
 6. Should travel count toward “working” totals by default, or only appear as a separate clocked-in category?
 7. How long may an unresolved idle interval remain before clock-out requires classification?
-8. Should `BREAK_REQUIRED` display make the family-facing state immediately interruptible, or remain `BUSY` until the first press?
+8. Should `BREAK_REQUIRED` make the family-facing state immediately interruptible, or remain `BUSY` until the break starts?
 9. What is the minimum supported macOS version, particularly for process-level Core Audio call detection?
 10. Is direct screensaver launch reliable across that support matrix, or should V1 offer display sleep/lock as alternative implementations?
 
@@ -1048,10 +1067,10 @@ Run against the actual purchased Bar and exact shipping firmware, then latest st
 V1 is ready when:
 
 - the user can explicitly clock in/out and never receives enforcement while clocked out;
-- the menu and Bar agree on family-facing state within two seconds under normal LAN conditions;
+- when a display accessory is connected, it agrees with the Mac’s family-facing state within two seconds under normal conditions;
 - normal focus produces a five-minute warning and full-screen overlay;
-- only the first physical Bar press starts the normal break, and only a second press after five minutes ends it;
-- screensaver launch is attempted after the first press without becoming the source of break truth;
+- one deliberate Mac or accessory command starts the normal break, and return to focus is accepted only after five minutes;
+- screensaver launch is attempted after break start without becoming the source of break truth;
 - meetings are planned from Calendar and can continue based on real call activity;
 - an overdue meeting always receives a five-minute post-call warning;
 - a feasible break is pulled before a meeting that would consume its deadline;
@@ -1061,7 +1080,8 @@ V1 is ready when:
 - restart, sleep/wake, and duplicate device events do not corrupt interval history;
 - SQLite totals match the interval ledger and Obsidian export can be regenerated without duplicating content;
 - all permissions, stored data, and diagnostic signals are understandable and locally controllable;
-- the hardware acceptance checklist passes on the actual device and supported firmware.
+- the Mac-only acceptance scenarios pass without an accessory;
+- before the BUSY plugin ships, its hardware acceptance checklist passes on the actual device and supported firmware.
 
 ---
 
