@@ -14,6 +14,7 @@ struct BreakBarMenuView: View {
                 TimerInstrument(
                     progress: model.presentation.progress,
                     label: model.presentation.shortLabel,
+                    timer: model.presentation.timer,
                     palette: palette
                 )
 
@@ -95,6 +96,7 @@ struct BreakBarMenuView: View {
 private struct TimerInstrument: View {
     let progress: Double
     let label: String
+    let timer: BreakBarTimerPresentation?
     let palette: BreakPalette
 
     var body: some View {
@@ -108,11 +110,21 @@ private struct TimerInstrument: View {
                     style: StrokeStyle(lineWidth: 8, lineCap: .round)
                 )
                 .rotationEffect(.degrees(-90))
-            Text(label)
-                .font(.system(size: label.count > 7 ? 13 : 17, weight: .bold, design: .monospaced))
-                .minimumScaleFactor(0.65)
-                .lineLimit(1)
-                .padding(10)
+            if let timer {
+                StableTimerText(
+                    text: timer.text,
+                    fontSize: 17,
+                    weight: .bold,
+                    width: 68,
+                    alignment: .center
+                )
+            } else {
+                Text(label)
+                    .font(.system(size: label.count > 7 ? 13 : 17, weight: .bold, design: .monospaced))
+                    .minimumScaleFactor(0.65)
+                    .lineLimit(1)
+                    .frame(width: 68, alignment: .center)
+            }
         }
         .frame(width: 92, height: 92)
         .accessibilityElement(children: .ignore)

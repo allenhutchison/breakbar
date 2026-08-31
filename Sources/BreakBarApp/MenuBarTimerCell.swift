@@ -1,24 +1,29 @@
-import BreakBarCore
 import SwiftUI
 
-/// The single menu-bar rendering path for every countdown and count-up state.
-struct MenuBarTimerCell: View {
-    let timer: BreakBarTimerPresentation
+/// Keeps timer glyphs stable inside the circular timer instrument.
+struct StableTimerText: View {
+    let text: String
+    let fontSize: CGFloat
+    let weight: Font.Weight
+    let width: CGFloat
+    let alignment: Alignment
 
     var body: some View {
-        Text(timer.text)
-            .font(.system(.body, design: .monospaced).weight(.semibold))
-            .monospacedDigit()
-            .frame(width: 58, alignment: .trailing)
-            .accessibilityLabel(accessibilityLabel)
+        ZStack(alignment: alignment) {
+            Text("+88:88")
+                .font(timerFont)
+                .hidden()
+                .accessibilityHidden(true)
+            Text(text)
+                .font(timerFont)
+                .lineLimit(1)
+        }
+        .frame(width: width, alignment: alignment)
+        .fixedSize(horizontal: true, vertical: false)
+        .transaction { $0.animation = nil }
     }
 
-    private var accessibilityLabel: String {
-        switch timer.direction {
-        case .countDown:
-            "\(timer.text) remaining"
-        case .countUp:
-            "\(timer.text.dropFirst()) elapsed"
-        }
+    private var timerFont: Font {
+        .custom("Menlo", fixedSize: fontSize).weight(weight)
     }
 }

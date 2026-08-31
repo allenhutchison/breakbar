@@ -48,7 +48,9 @@ final class AppModel: ObservableObject {
 
         ticker = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(1))
+                let currentTime = Date().timeIntervalSince1970
+                let nextSecond = floor(currentTime) + 1
+                try? await Task.sleep(for: .seconds(nextSecond - currentTime))
                 guard !Task.isCancelled else { return }
                 self?.tick()
             }
@@ -124,17 +126,35 @@ final class AppModel: ObservableObject {
     }
 
     private func tick() {
-        now = Date()
-        _ = apply(.tick, at: now)
+        let eventDate = Date()
+        let displayedText = presentation.shortLabel
+        let result = apply(.tick, at: eventDate, publishTime: false)
+        let nextText = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: eventDate
+        ).shortLabel
+
+        // A timer wake-up is not itself a UI change. Publish only when the
+        // formatted second or state actually changed.
+        if result == .changed || nextText != displayedText {
+            now = eventDate
+        }
     }
 
     @discardableResult
-    private func apply(_ command: BreakCommand, at date: Date? = nil) -> BreakCommandResult {
+    private func apply(
+        _ command: BreakCommand,
+        at date: Date? = nil,
+        publishTime: Bool = true
+    ) -> BreakCommandResult {
         let eventDate = date ?? Date()
         let previousState = engine.state
         var candidate = engine
         let result = candidate.handle(command, at: eventDate)
-        now = eventDate
+        if publishTime {
+            now = eventDate
+        }
 
         if result == .changed {
             guard let repository else {
@@ -156,8 +176,6 @@ final class AppModel: ObservableObject {
             engine = candidate
             state = candidate.state
             lastMessage = nil
-        } else {
-            state = engine.state
         }
         if previousState.enforcement != .warning && state.enforcement == .warning {
             WarningNotifier.deliver(
