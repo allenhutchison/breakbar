@@ -17,13 +17,12 @@ struct BreakBarApp: App {
         } label: {
             HStack(spacing: 4) {
                 Image(systemName: model.menuBarSymbol)
-                Text(model.presentation.shortLabel)
-                    .font(.system(.body, design: .monospaced).weight(.semibold))
-                    .monospacedDigit()
-                    .frame(
-                        width: model.state.phase == .clockedOut ? nil : 58,
-                        alignment: .trailing
-                    )
+                if let timer = model.presentation.timer {
+                    MenuBarTimerCell(timer: timer)
+                } else {
+                    Text(model.presentation.statusLabel)
+                        .font(.system(.body).weight(.semibold))
+                }
             }
             .fixedSize(horizontal: true, vertical: false)
             .accessibilityElement(children: .combine)

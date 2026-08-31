@@ -1,5 +1,25 @@
 import Foundation
 
+public struct BreakBarTimerPresentation: Equatable, Sendable {
+    public enum Direction: Equatable, Sendable {
+        case countDown
+        case countUp
+    }
+
+    public let direction: Direction
+    public let interval: TimeInterval
+
+    public init(direction: Direction, interval: TimeInterval) {
+        self.direction = direction
+        self.interval = max(0, interval)
+    }
+
+    public var text: String {
+        let clock = BreakBarPresentation.clock(interval)
+        return direction == .countUp ? "+\(clock)" : clock
+    }
+}
+
 public struct BreakBarPresentation: Equatable, Sendable {
     public enum Tone: Equatable, Sendable {
         case neutral
@@ -9,17 +29,23 @@ public struct BreakBarPresentation: Equatable, Sendable {
         case breakTime
     }
 
-    public var shortLabel: String
+    public var statusLabel: String
+    public var timer: BreakBarTimerPresentation?
     public var title: String
     public var detail: String
     public var progress: Double
     public var tone: Tone
     public var primaryActionTitle: String?
 
+    public var shortLabel: String {
+        timer?.text ?? statusLabel
+    }
+
     public init(state: BreakBarState, policy: BreakPolicy, now: Date) {
         switch state.phase {
         case .clockedOut:
-            shortLabel = "BreakBar"
+            statusLabel = "BreakBar"
+            timer = nil
             title = "Ready when you are"
             detail = "Clock in to begin a \(Self.spoken(policy.focusDuration)) focus cycle."
             progress = 0
@@ -28,7 +54,13 @@ public struct BreakBarPresentation: Equatable, Sendable {
 
         case .focusing:
             let remaining = max(0, (state.focusDueAt ?? now).timeIntervalSince(now))
-            shortLabel = state.enforcement == .required ? "BREAK" : Self.clock(remaining)
+            if state.enforcement == .required {
+                statusLabel = "BREAK"
+                timer = nil
+            } else {
+                statusLabel = ""
+                timer = BreakBarTimerPresentation(direction: .countDown, interval: remaining)
+            }
             title = state.enforcement == .required
                 ? "Time to get up"
                 : state.enforcement == .warning ? "Find a stopping point" : "Focus"
@@ -46,7 +78,11 @@ public struct BreakBarPresentation: Equatable, Sendable {
             let remaining = max(0, minimumEnd.timeIntervalSince(now))
             let elapsed = max(0, now.timeIntervalSince(minimumEnd))
             let minimumSatisfied = remaining <= 0
-            shortLabel = minimumSatisfied ? "+\(Self.clock(elapsed))" : Self.clock(remaining)
+            statusLabel = ""
+            timer = BreakBarTimerPresentation(
+                direction: minimumSatisfied ? .countUp : .countDown,
+                interval: minimumSatisfied ? elapsed : remaining
+            )
             title = minimumSatisfied ? "Break complete" : "Stay away a little longer"
             detail = minimumSatisfied
                 ? "Return when you’re ready; the extra time still counts."

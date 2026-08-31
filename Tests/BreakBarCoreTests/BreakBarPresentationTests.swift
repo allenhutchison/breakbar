@@ -25,6 +25,10 @@ final class BreakBarPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.shortLabel, "0:10")
+        XCTAssertEqual(
+            presentation.timer,
+            BreakBarTimerPresentation(direction: .countDown, interval: 10)
+        )
         XCTAssertEqual(presentation.tone, .warning)
     }
 
@@ -43,6 +47,21 @@ final class BreakBarPresentationTests: XCTestCase {
         )
 
         XCTAssertEqual(presentation.shortLabel, "+0:07")
+        XCTAssertEqual(
+            presentation.timer,
+            BreakBarTimerPresentation(direction: .countUp, interval: 7)
+        )
         XCTAssertEqual(presentation.primaryActionTitle, "Return to focus")
+    }
+
+    func testTimerFormattingIsSharedAcrossStates() {
+        XCTAssertEqual(
+            BreakBarTimerPresentation(direction: .countDown, interval: 65).text,
+            "1:05"
+        )
+        XCTAssertEqual(
+            BreakBarTimerPresentation(direction: .countUp, interval: 65).text,
+            "+1:05"
+        )
     }
 }
