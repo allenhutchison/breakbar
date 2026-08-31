@@ -1,5 +1,6 @@
 import AppKit
 import BreakBarCore
+import BreakBarPersistence
 import Foundation
 
 @MainActor
@@ -12,6 +13,7 @@ final class AppModel: ObservableObject {
     let isDemoMode: Bool
 
     private var engine: BreakBarEngine
+    private let repository: SessionRepository?
     private let overlayController = OverlayController()
     private var ticker: Task<Void, Never>?
 
@@ -20,10 +22,29 @@ final class AppModel: ObservableObject {
         policy = isDemoMode
             ? BreakPolicy(focusDuration: 60, warningDuration: 15, minimumBreakDuration: 20)
             : .standard
-        let restored = StatePersistence.load()
-        engine = BreakBarEngine(state: restored ?? BreakBarState(), policy: policy)
+
+        var restored = BreakBarState()
+        var loadedRepository: SessionRepository?
+        var startupMessage: String?
+        do {
+            let databaseURL = try Self.databaseURL(isDemoMode: isDemoMode)
+            let repository = try SessionRepository(url: databaseURL)
+            try repository.bootstrapIfNeeded(
+                state: isDemoMode
+                    ? BreakBarState()
+                    : LegacyStatePersistence.load() ?? BreakBarState()
+            )
+            restored = try repository.loadState() ?? BreakBarState()
+            loadedRepository = repository
+        } catch {
+            startupMessage = "BreakBar could not open its history database: \(error.localizedDescription)"
+        }
+
+        repository = loadedRepository
+        engine = BreakBarEngine(state: restored, policy: policy)
         state = engine.state
         now = Date()
+        lastMessage = startupMessage
 
         ticker = Task { [weak self] in
             while !Task.isCancelled {
@@ -111,12 +132,32 @@ final class AppModel: ObservableObject {
     private func apply(_ command: BreakCommand, at date: Date? = nil) -> BreakCommandResult {
         let eventDate = date ?? Date()
         let previousState = engine.state
-        let result = engine.handle(command, at: eventDate)
+        var candidate = engine
+        let result = candidate.handle(command, at: eventDate)
         now = eventDate
-        state = engine.state
+
         if result == .changed {
-            StatePersistence.save(state)
+            guard let repository else {
+                lastMessage = "The history database is unavailable, so the timer did not change."
+                synchronizeOverlay()
+                return .unchanged
+            }
+            do {
+                try repository.commitTransition(
+                    from: previousState,
+                    to: candidate.state,
+                    at: eventDate
+                )
+            } catch {
+                lastMessage = "The timer did not change because it could not be saved: \(error.localizedDescription)"
+                synchronizeOverlay()
+                return .unchanged
+            }
+            engine = candidate
+            state = candidate.state
             lastMessage = nil
+        } else {
+            state = engine.state
         }
         if previousState.enforcement != .warning && state.enforcement == .warning {
             WarningNotifier.deliver(
@@ -126,6 +167,17 @@ final class AppModel: ObservableObject {
         }
         synchronizeOverlay()
         return result
+    }
+
+    private static func databaseURL(isDemoMode: Bool) throws -> URL {
+        guard let base = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else {
+            throw CocoaError(.fileNoSuchFile)
+        }
+        return base.appendingPathComponent("BreakBar", isDirectory: true)
+            .appendingPathComponent(isDemoMode ? "breakbar-demo.sqlite" : "breakbar.sqlite")
     }
 
     private func synchronizeOverlay() {
