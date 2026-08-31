@@ -2,12 +2,15 @@ import AppKit
 import BreakBarCore
 import BreakBarPersistence
 import Foundation
+import ServiceManagement
 
 @MainActor
 final class AppModel: ObservableObject {
     @Published private(set) var state: BreakBarState
     @Published private(set) var now: Date
     @Published private(set) var lastMessage: String?
+    @Published private(set) var launchAtLoginRequested: Bool
+    @Published private(set) var launchAtLoginMessage: String?
 
     let policy: BreakPolicy
     let isDemoMode: Bool
@@ -45,6 +48,9 @@ final class AppModel: ObservableObject {
         state = engine.state
         now = Date()
         lastMessage = startupMessage
+        launchAtLoginRequested = false
+        launchAtLoginMessage = nil
+        refreshLaunchAtLoginStatus()
 
         ticker = Task { [weak self] in
             while !Task.isCancelled {
@@ -103,8 +109,19 @@ final class AppModel: ObservableObject {
         apply(.clockOut)
     }
 
+    func emergencyClockOut() {
+        apply(.emergencyClockOut)
+    }
+
     func startBreak() {
         let result = apply(.startBreak)
+        if result == .changed {
+            SystemActions.startScreensaver()
+        }
+    }
+
+    func emergencyStartBreak() {
+        let result = apply(.emergencyStartBreak)
         if result == .changed {
             SystemActions.startScreensaver()
         }
@@ -123,6 +140,30 @@ final class AppModel: ObservableObject {
 
     func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    func setLaunchAtLogin(_ requested: Bool) {
+        let service = SMAppService.mainApp
+        do {
+            if requested {
+                try service.register()
+            } else {
+                try service.unregister()
+            }
+            refreshLaunchAtLoginStatus()
+        } catch {
+            refreshLaunchAtLoginStatus()
+            launchAtLoginMessage = "BreakBar could not update Login Items: \(error.localizedDescription)"
+        }
+    }
+
+    func openLoginItemsSettings() {
+        SMAppService.openSystemSettingsLoginItems()
+    }
+
+    func reconcileAfterLifecycleEvent() {
+        let eventDate = Date()
+        _ = apply(.reconcile, at: eventDate)
     }
 
     private func tick() {
@@ -202,10 +243,29 @@ final class AppModel: ObservableObject {
         if state.phase == .focusing && state.enforcement == .required {
             overlayController.show(
                 startBreak: { [weak self] in self?.startBreak() },
-                clockOut: { [weak self] in self?.clockOut() }
+                clockOut: { [weak self] in self?.clockOut() },
+                emergencyStartBreak: { [weak self] in self?.emergencyStartBreak() },
+                emergencyClockOut: { [weak self] in self?.emergencyClockOut() }
             )
         } else {
             overlayController.hide()
+        }
+    }
+
+    func refreshLaunchAtLoginStatus() {
+        switch SMAppService.mainApp.status {
+        case .enabled:
+            launchAtLoginRequested = true
+            launchAtLoginMessage = nil
+        case .requiresApproval:
+            launchAtLoginRequested = true
+            launchAtLoginMessage = "Approval is required in System Settings → Login Items."
+        case .notRegistered, .notFound:
+            launchAtLoginRequested = false
+            launchAtLoginMessage = nil
+        @unknown default:
+            launchAtLoginRequested = false
+            launchAtLoginMessage = "The launch-at-login status is unavailable."
         }
     }
 }

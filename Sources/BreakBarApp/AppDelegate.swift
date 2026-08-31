@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         configureStatusItem()
         configurePopover()
         observeModel()
+        observeLifecycleChanges()
         updateStatusItem()
 
         let center = UNUserNotificationCenter.current()
@@ -29,6 +30,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 NSLog("BreakBar notifications are disabled; warning sounds will still play.")
             }
         }
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model.refreshLaunchAtLoginStatus()
     }
 
     private func configureStatusItem() {
@@ -64,6 +74,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 self?.updateStatusItem()
             }
         }
+    }
+
+    private func observeLifecycleChanges() {
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(reconcileAfterLifecycleChange(_:)),
+            name: NSWorkspace.didWakeNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(reconcileAfterLifecycleChange(_:)),
+            name: .NSSystemClockDidChange,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(reconcileAfterLifecycleChange(_:)),
+            name: .NSSystemTimeZoneDidChange,
+            object: nil
+        )
+    }
+
+    @objc private func reconcileAfterLifecycleChange(_ notification: Notification) {
+        model.reconcileAfterLifecycleEvent()
     }
 
     private func updateStatusItem() {

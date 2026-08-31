@@ -66,4 +66,66 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.handle(.tick, at: warningTime), .unchanged)
         XCTAssertEqual(engine.state.revision, revision)
     }
+
+    func testLifecycleReconciliationAdvancesPastMissedDeadline() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+
+        XCTAssertEqual(
+            engine.handle(.reconcile, at: origin.addingTimeInterval(90)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .required)
+        XCTAssertEqual(engine.state.lastTransitionReason, .lifecycleReconciliation)
+    }
+
+    func testClockRollbackDoesNotWeakenVisibleEnforcement() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(50))
+        let revision = engine.state.revision
+
+        XCTAssertEqual(
+            engine.handle(.reconcile, at: origin.addingTimeInterval(10)),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.state.revision, revision)
+    }
+
+    func testEmergencyActionsRecordDistinctReasons() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+
+        XCTAssertEqual(
+            engine.handle(.emergencyStartBreak, at: origin.addingTimeInterval(60)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .onBreak)
+        XCTAssertEqual(engine.state.lastTransitionReason, .emergencyStartBreak)
+
+        XCTAssertEqual(
+            engine.handle(.emergencyClockOut, at: origin.addingTimeInterval(61)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .clockedOut)
+        XCTAssertEqual(engine.state.lastTransitionReason, .emergencyClockOut)
+    }
+
+    func testStateDecodesSnapshotWithoutTransitionReason() throws {
+        let data = Data(
+            """
+            {
+              "phase": "clockedOut",
+              "enforcement": "none",
+              "revision": 3
+            }
+            """.utf8
+        )
+
+        let state = try JSONDecoder().decode(BreakBarState.self, from: data)
+        XCTAssertEqual(state.phase, .clockedOut)
+        XCTAssertEqual(state.revision, 3)
+        XCTAssertNil(state.lastTransitionReason)
+    }
 }

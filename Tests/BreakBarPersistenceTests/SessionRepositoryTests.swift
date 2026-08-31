@@ -137,6 +137,26 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testEmergencyTransitionReasonSurvivesReopen() throws {
+        try withRepository { repository, databaseURL in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            try commit(
+                .emergencyStartBreak,
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+
+            let reopened = try SessionRepository(url: databaseURL)
+            XCTAssertEqual(
+                try reopened.loadState()?.lastTransitionReason,
+                .emergencyStartBreak
+            )
+        }
+    }
+
     func testStaleTransitionRollsBackWithoutChangingHistory() throws {
         try withRepository { repository, _ in
             var engine = BreakBarEngine(policy: policy)

@@ -19,6 +19,7 @@ bundle: build
 	mkdir -p $(APP_CONTENTS)/MacOS
 	cp $(CURDIR)/.build/out/Products/Debug/BreakBar $(APP_EXECUTABLE)
 	cp $(CURDIR)/Support/Info.plist $(APP_CONTENTS)/Info.plist
+	codesign --force --sign - --identifier app.breakbar.mac $(APP_BUNDLE)
 
 test:
 	$(SWIFT_ENV) swift test $(SWIFT_PATHS)

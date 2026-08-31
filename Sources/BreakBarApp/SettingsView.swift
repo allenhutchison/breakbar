@@ -5,10 +5,30 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
-            LabeledContent("Timer source", value: "This Mac")
-            LabeledContent("Focus interval", value: duration(model.policy.focusDuration))
-            LabeledContent("Warning", value: duration(model.policy.warningDuration))
-            LabeledContent("Minimum break", value: duration(model.policy.minimumBreakDuration))
+            Section("General") {
+                LabeledContent("Timer source", value: "This Mac")
+                LabeledContent("Focus interval", value: duration(model.policy.focusDuration))
+                LabeledContent("Warning", value: duration(model.policy.warningDuration))
+                LabeledContent("Minimum break", value: duration(model.policy.minimumBreakDuration))
+
+                Toggle(
+                    "Launch BreakBar at login",
+                    isOn: Binding(
+                        get: { model.launchAtLoginRequested },
+                        set: model.setLaunchAtLogin
+                    )
+                )
+
+                if let message = model.launchAtLoginMessage {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Button("Open Login Items Settings", action: model.openLoginItemsSettings)
+                            .buttonStyle(.link)
+                    }
+                }
+            }
 
             Section("Accessories") {
                 Text("No accessories installed")
@@ -18,7 +38,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 480, height: 330)
+        .frame(width: 480, height: 410)
     }
 
     private func duration(_ seconds: TimeInterval) -> String {

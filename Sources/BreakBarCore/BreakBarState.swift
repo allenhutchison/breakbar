@@ -12,12 +12,24 @@ public enum BreakEnforcement: String, Codable, Equatable, Sendable {
     case required
 }
 
+public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
+    case clockIn
+    case clockOut
+    case startBreak
+    case returnToFocus
+    case timerDeadline
+    case lifecycleReconciliation
+    case emergencyStartBreak
+    case emergencyClockOut
+}
+
 public struct BreakBarState: Codable, Equatable, Sendable {
     public var phase: BreakBarPhase
     public var enforcement: BreakEnforcement
     public var phaseStartedAt: Date?
     public var focusDueAt: Date?
     public var minimumBreakEndsAt: Date?
+    public var lastTransitionReason: BreakTransitionReason?
     public var revision: UInt64
 
     public init(
@@ -26,6 +38,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         phaseStartedAt: Date? = nil,
         focusDueAt: Date? = nil,
         minimumBreakEndsAt: Date? = nil,
+        lastTransitionReason: BreakTransitionReason? = nil,
         revision: UInt64 = 0
     ) {
         self.phase = phase
@@ -33,6 +46,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.phaseStartedAt = phaseStartedAt
         self.focusDueAt = focusDueAt
         self.minimumBreakEndsAt = minimumBreakEndsAt
+        self.lastTransitionReason = lastTransitionReason
         self.revision = revision
     }
 }
@@ -43,6 +57,9 @@ public enum BreakCommand: Equatable, Sendable {
     case startBreak
     case returnToFocus
     case tick
+    case reconcile
+    case emergencyStartBreak
+    case emergencyClockOut
 }
 
 public enum BreakCommandResult: Equatable, Sendable {
