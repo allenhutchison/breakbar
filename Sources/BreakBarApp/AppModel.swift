@@ -12,17 +12,20 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastMessage: String?
     @Published private(set) var launchAtLoginRequested: Bool
     @Published private(set) var launchAtLoginMessage: String?
+    @Published private(set) var acceptedCallSignal: BreakCallSignal?
+    @Published private(set) var allowUncorrelatedBrowserCalls: Bool
 
     let policy: BreakPolicy
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
+    let callActivityMonitor = CallActivityMonitor()
 
     private var engine: BreakBarEngine
     private let repository: SessionRepository?
     private let overlayController = OverlayController()
     private let breakReturnPanelController = BreakReturnPanelController()
     private var ticker: Task<Void, Never>?
-    private var calendarObservation: AnyCancellable?
+    private var observations = Set<AnyCancellable>()
 
     init() {
         isDemoMode = CommandLine.arguments.contains("--demo")
@@ -54,13 +57,25 @@ final class AppModel: ObservableObject {
         lastMessage = startupMessage
         launchAtLoginRequested = false
         launchAtLoginMessage = nil
+        acceptedCallSignal = nil
+        allowUncorrelatedBrowserCalls = UserDefaults.standard.bool(
+            forKey: Self.allowUncorrelatedBrowserCallsKey
+        )
         refreshLaunchAtLoginStatus()
 
-        calendarObservation = calendarMonitor.$schedulingConstraints
+        calendarMonitor.$schedulingConstraints
             .removeDuplicates()
             .sink { [weak self] constraints in
                 self?.calendarConstraintsChanged(constraints)
             }
+            .store(in: &observations)
+
+        callActivityMonitor.$signal
+            .removeDuplicates()
+            .sink { [weak self] signal in
+                self?.callActivityChanged(signal)
+            }
+            .store(in: &observations)
 
         ticker = Task { [weak self] in
             while !Task.isCancelled {
@@ -116,6 +131,7 @@ final class AppModel: ObservableObject {
         let eventDate = Date()
         if apply(.clockIn, at: eventDate) == .changed {
             applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
         }
     }
 
@@ -140,6 +156,7 @@ final class AppModel: ObservableObject {
         let result = apply(.returnToFocus, at: eventDate)
         if result == .changed {
             applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
         }
         if case let .rejected(remaining) = result {
             lastMessage = "Stay away for another \(BreakBarPresentation.clock(remaining))."
@@ -184,6 +201,7 @@ final class AppModel: ObservableObject {
     func reconcileAfterLifecycleEvent() {
         let eventDate = Date()
         applyCurrentCalendarConstraints(at: eventDate)
+        applyCurrentCallActivity(at: eventDate)
         _ = apply(.reconcile, at: eventDate)
         synchronizeWindows(at: eventDate, bringReturnPanelToFront: true)
     }
@@ -192,6 +210,7 @@ final class AppModel: ObservableObject {
         let eventDate = Date()
         let displayedText = presentation.shortLabel
         let calendarResult = applyCurrentCalendarConstraints(at: eventDate)
+        let callResult = applyCurrentCallActivity(at: eventDate)
         let timerResult = apply(.tick, at: eventDate, publishTime: false)
         let nextText = BreakBarPresentation(
             state: state,
@@ -201,7 +220,11 @@ final class AppModel: ObservableObject {
 
         // A timer wake-up is not itself a UI change. Publish only when the
         // formatted second or state actually changed.
-        if calendarResult == .changed || timerResult == .changed || nextText != displayedText {
+        if calendarResult == .changed
+            || callResult == .changed
+            || timerResult == .changed
+            || nextText != displayedText
+        {
             now = eventDate
         }
     }
@@ -209,6 +232,14 @@ final class AppModel: ObservableObject {
     private func calendarConstraintsChanged(_ constraints: [BreakCalendarConstraint]) {
         let eventDate = Date()
         _ = apply(.updateCalendarConstraints(constraints), at: eventDate)
+        _ = applyCurrentCallActivity(at: eventDate)
+        _ = apply(.tick, at: eventDate)
+    }
+
+    private func callActivityChanged(_ signal: BreakCallSignal?) {
+        let eventDate = Date()
+        _ = applyCurrentCallActivity(rawSignal: signal, at: eventDate)
+        _ = applyCurrentCalendarConstraints(at: eventDate)
         _ = apply(.tick, at: eventDate)
     }
 
@@ -220,6 +251,66 @@ final class AppModel: ObservableObject {
             publishTime: false
         )
     }
+
+    @discardableResult
+    private func applyCurrentCallActivity(at date: Date) -> BreakCommandResult {
+        applyCurrentCallActivity(rawSignal: callActivityMonitor.signal, at: date)
+    }
+
+    @discardableResult
+    private func applyCurrentCallActivity(
+        rawSignal: BreakCallSignal?,
+        at date: Date
+    ) -> BreakCommandResult {
+        let acceptedSignal = BreakCallCorrelation.acceptedSignal(
+            rawSignal: rawSignal,
+            currentAcceptedSignal: acceptedCallSignal,
+            constraints: calendarMonitor.schedulingConstraints,
+            at: date,
+            allowUncorrelatedBrowser: allowUncorrelatedBrowserCalls
+        )
+        if acceptedCallSignal != acceptedSignal {
+            acceptedCallSignal = acceptedSignal
+        }
+        return apply(
+            .updateCallActivity(acceptedSignal),
+            at: date,
+            publishTime: false
+        )
+    }
+
+    var activeCallApplicationName: String? {
+        guard let bundleIdentifier = acceptedCallSignal?.bundleIdentifier else { return nil }
+        return Self.callApplicationNames[bundleIdentifier] ?? bundleIdentifier
+    }
+
+    func setAllowUncorrelatedBrowserCalls(_ allowed: Bool) {
+        allowUncorrelatedBrowserCalls = allowed
+        UserDefaults.standard.set(allowed, forKey: Self.allowUncorrelatedBrowserCallsKey)
+        if !allowed, acceptedCallSignal?.confidence == .userApprovedBrowser {
+            acceptedCallSignal = nil
+        }
+        callActivityChanged(callActivityMonitor.signal)
+    }
+
+    private static let allowUncorrelatedBrowserCallsKey =
+        "call.allowUncorrelatedBrowserMicrophone"
+
+    private static let callApplicationNames: [String: String] = [
+        "us.zoom.xos": "Zoom",
+        "com.microsoft.teams2": "Microsoft Teams",
+        "com.microsoft.teams": "Microsoft Teams",
+        "com.apple.FaceTime": "FaceTime",
+        "com.tinyspeck.slackmacgap": "Slack",
+        "com.cisco.webexmeetingsapp": "Webex",
+        "Cisco-Systems.Spark": "Webex",
+        "com.apple.Safari": "Safari",
+        "com.google.Chrome": "Google Chrome",
+        "com.microsoft.edgemac": "Microsoft Edge",
+        "company.thebrowser.Browser": "Arc",
+        "org.mozilla.firefox": "Firefox",
+        "com.brave.Browser": "Brave",
+    ]
 
     @discardableResult
     private func apply(

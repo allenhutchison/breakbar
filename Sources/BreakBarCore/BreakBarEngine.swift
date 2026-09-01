@@ -54,6 +54,9 @@ public struct BreakBarEngine: Sendable {
 
         case let .updateCalendarConstraints(constraints):
             return updateCalendarPlan(constraints, at: now)
+
+        case let .updateCallActivity(signal):
+            return updateCallActivity(signal, at: now)
         }
     }
 
@@ -71,6 +74,9 @@ public struct BreakBarEngine: Sendable {
         state.breakPlanReason = nil
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.liveCallStartedAt = nil
+        state.liveCallBundleIdentifier = nil
+        state.liveCallConfidence = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
         return .changed
@@ -82,6 +88,13 @@ public struct BreakBarEngine: Sendable {
     ) -> BreakCommandResult {
         guard state.phase == .focusing, let dueAt = state.focusDueAt else {
             return .unchanged
+        }
+        if state.liveCallStartedAt != nil {
+            guard state.enforcement != .none else { return .unchanged }
+            state.enforcement = .none
+            state.lastTransitionReason = .liveCallStarted
+            state.revision &+= 1
+            return .changed
         }
         if meetingIsActive(at: now) {
             guard state.enforcement != .none else { return .unchanged }
@@ -123,6 +136,9 @@ public struct BreakBarEngine: Sendable {
         state.breakPlanReason = .nominal
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.liveCallStartedAt = nil
+        state.liveCallBundleIdentifier = nil
+        state.liveCallConfidence = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
     }
@@ -149,6 +165,17 @@ public struct BreakBarEngine: Sendable {
         var calendarMeetingIsActive = plan.meetingIsActive(at: now)
         var plannedBreakAt = plan.plannedBreakAt
         var planReason = plan.reason
+
+        if state.liveCallStartedAt != nil,
+           let storedMeetingStartsAt = state.calendarMeetingStartsAt,
+           let storedMeetingEndsAt = state.calendarMeetingEndsAt,
+           now >= storedMeetingEndsAt
+        {
+            calendarMeetingStartsAt = storedMeetingStartsAt
+            calendarMeetingEndsAt = storedMeetingEndsAt
+            plannedBreakAt = storedMeetingEndsAt.addingTimeInterval(policy.warningDuration)
+            planReason = .deferredThroughMeeting
+        }
 
         // Once a scheduled meeting begins, retain its known window through the
         // scheduled end even if EventKit briefly returns an empty result.
@@ -188,7 +215,7 @@ public struct BreakBarEngine: Sendable {
         candidate.breakPlanReason = planReason
         candidate.calendarMeetingStartsAt = calendarMeetingStartsAt
         candidate.calendarMeetingEndsAt = calendarMeetingEndsAt
-        if calendarMeetingIsActive {
+        if calendarMeetingIsActive || state.liveCallStartedAt != nil {
             candidate.enforcement = .none
         }
         guard candidate != state else { return .unchanged }
@@ -201,6 +228,7 @@ public struct BreakBarEngine: Sendable {
     }
 
     private mutating func reconcileEndedMeeting(at now: Date) -> BreakCommandResult? {
+        guard state.liveCallStartedAt == nil else { return nil }
         guard let meetingEndsAt = state.calendarMeetingEndsAt,
               now >= meetingEndsAt
         else {
@@ -221,6 +249,55 @@ public struct BreakBarEngine: Sendable {
             state.breakPlanReason = .nominal
         }
         state.lastTransitionReason = .scheduledMeetingEnded
+        state.revision &+= 1
+        return .changed
+    }
+
+    private mutating func updateCallActivity(
+        _ signal: BreakCallSignal?,
+        at now: Date
+    ) -> BreakCommandResult {
+        guard state.phase == .focusing else { return .unchanged }
+
+        if let signal {
+            if state.liveCallStartedAt != nil,
+               state.liveCallBundleIdentifier == signal.bundleIdentifier,
+               state.liveCallConfidence == signal.confidence,
+               state.enforcement == .none
+            {
+                return .unchanged
+            }
+            if state.liveCallStartedAt == nil {
+                state.liveCallStartedAt = now
+            }
+            state.liveCallBundleIdentifier = signal.bundleIdentifier
+            state.liveCallConfidence = signal.confidence
+            state.enforcement = .none
+            state.lastTransitionReason = .liveCallStarted
+            state.revision &+= 1
+            return .changed
+        }
+
+        guard state.liveCallStartedAt != nil else { return .unchanged }
+        state.liveCallStartedAt = nil
+        state.liveCallBundleIdentifier = nil
+        state.liveCallConfidence = nil
+        state.enforcement = .none
+        if let meetingEndsAt = state.calendarMeetingEndsAt, now >= meetingEndsAt {
+            state.calendarMeetingStartsAt = nil
+            state.calendarMeetingEndsAt = nil
+        }
+        let nominalDueAt = state.nominalFocusDueAt
+            ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
+            ?? now
+        if now >= nominalDueAt {
+            state.focusDueAt = now.addingTimeInterval(policy.warningDuration)
+            state.breakPlanReason = .postMeetingWarning
+        } else {
+            state.focusDueAt = nominalDueAt
+            state.breakPlanReason = .nominal
+        }
+        state.lastTransitionReason = .liveCallEnded
         state.revision &+= 1
         return .changed
     }

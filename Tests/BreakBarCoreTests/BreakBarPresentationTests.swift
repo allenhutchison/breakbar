@@ -117,6 +117,60 @@ final class BreakBarPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.detail.contains("moved before your next meeting"))
     }
 
+    func testLiveMeetingOverrunCountsUpFromScheduledEnd() {
+        let state = BreakBarState(
+            phase: .focusing,
+            enforcement: .none,
+            phaseStartedAt: origin,
+            nominalFocusDueAt: origin.addingTimeInterval(60),
+            focusDueAt: origin.addingTimeInterval(105),
+            breakPlanReason: .deferredThroughMeeting,
+            calendarMeetingStartsAt: origin.addingTimeInterval(50),
+            calendarMeetingEndsAt: origin.addingTimeInterval(90),
+            liveCallStartedAt: origin.addingTimeInterval(52),
+            liveCallBundleIdentifier: "com.google.Chrome",
+            liveCallConfidence: .calendarCorrelatedBrowser,
+            revision: 4
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(100)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "+0:10")
+        XCTAssertEqual(presentation.title, "Meeting overrun")
+        XCTAssertEqual(presentation.tone, .meeting)
+        XCTAssertNil(presentation.primaryActionTitle)
+    }
+
+    func testLiveCallBeforeFutureMeetingCountsUpFromCallStart() {
+        let state = BreakBarState(
+            phase: .focusing,
+            phaseStartedAt: origin,
+            nominalFocusDueAt: origin.addingTimeInterval(60),
+            focusDueAt: origin.addingTimeInterval(50),
+            breakPlanReason: .pulledBeforeMeeting,
+            calendarMeetingStartsAt: origin.addingTimeInterval(70),
+            calendarMeetingEndsAt: origin.addingTimeInterval(120),
+            liveCallStartedAt: origin.addingTimeInterval(10),
+            liveCallBundleIdentifier: "us.zoom.xos",
+            liveCallConfidence: .dedicatedApplication,
+            revision: 4
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(20)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "+0:10")
+        XCTAssertEqual(presentation.title, "In a call")
+        XCTAssertEqual(presentation.tone, .meeting)
+    }
+
     func testTimerFormattingIsSharedAcrossStates() {
         XCTAssertEqual(
             BreakBarTimerPresentation(direction: .countDown, interval: 65).text,

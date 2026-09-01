@@ -24,6 +24,8 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case calendarPlanUpdated
     case scheduledMeetingStarted
     case scheduledMeetingEnded
+    case liveCallStarted
+    case liveCallEnded
 }
 
 public enum BreakPlanReason: String, Codable, Equatable, Sendable {
@@ -43,6 +45,9 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var breakPlanReason: BreakPlanReason?
     public var calendarMeetingStartsAt: Date?
     public var calendarMeetingEndsAt: Date?
+    public var liveCallStartedAt: Date?
+    public var liveCallBundleIdentifier: String?
+    public var liveCallConfidence: BreakCallConfidence?
     public var lastTransitionReason: BreakTransitionReason?
     public var revision: UInt64
 
@@ -56,6 +61,9 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         breakPlanReason: BreakPlanReason? = nil,
         calendarMeetingStartsAt: Date? = nil,
         calendarMeetingEndsAt: Date? = nil,
+        liveCallStartedAt: Date? = nil,
+        liveCallBundleIdentifier: String? = nil,
+        liveCallConfidence: BreakCallConfidence? = nil,
         lastTransitionReason: BreakTransitionReason? = nil,
         revision: UInt64 = 0
     ) {
@@ -68,6 +76,9 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.breakPlanReason = breakPlanReason
         self.calendarMeetingStartsAt = calendarMeetingStartsAt
         self.calendarMeetingEndsAt = calendarMeetingEndsAt
+        self.liveCallStartedAt = liveCallStartedAt
+        self.liveCallBundleIdentifier = liveCallBundleIdentifier
+        self.liveCallConfidence = liveCallConfidence
         self.lastTransitionReason = lastTransitionReason
         self.revision = revision
     }
@@ -83,6 +94,7 @@ public enum BreakCommand: Equatable, Sendable {
     case emergencyStartBreak
     case emergencyClockOut
     case updateCalendarConstraints([BreakCalendarConstraint])
+    case updateCallActivity(BreakCallSignal?)
 }
 
 public enum BreakCommandResult: Equatable, Sendable {

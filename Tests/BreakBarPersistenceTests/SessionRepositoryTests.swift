@@ -183,6 +183,33 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testLiveCallPersistsWithoutSplittingFocusHistory() throws {
+        try withRepository { repository, databaseURL in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            try commit(
+                .updateCallActivity(
+                    BreakCallSignal(
+                        bundleIdentifier: "us.zoom.xos",
+                        confidence: .dedicatedApplication
+                    )
+                ),
+                at: origin.addingTimeInterval(10),
+                engine: &engine,
+                repository: repository
+            )
+
+            let reopened = try SessionRepository(url: databaseURL)
+            let recovered = try XCTUnwrap(reopened.loadState())
+            XCTAssertEqual(recovered.liveCallStartedAt, origin.addingTimeInterval(10))
+            XCTAssertEqual(recovered.liveCallBundleIdentifier, "us.zoom.xos")
+            XCTAssertEqual(recovered.liveCallConfidence, .dedicatedApplication)
+            XCTAssertEqual(try reopened.stats().totalIntervals, 1)
+            XCTAssertEqual(try reopened.stats().openIntervals, 1)
+        }
+    }
+
     func testStaleTransitionRollsBackWithoutChangingHistory() throws {
         try withRepository { repository, _ in
             var engine = BreakBarEngine(policy: policy)

@@ -226,6 +226,95 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.enforcement, .required)
     }
 
+    func testLiveCallSuppressesAlreadyRequiredBreak() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.enforcement, .required)
+
+        let signal = BreakCallSignal(
+            bundleIdentifier: "us.zoom.xos",
+            confidence: .dedicatedApplication
+        )
+        XCTAssertEqual(
+            engine.handle(.updateCallActivity(signal), at: origin.addingTimeInterval(61)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.liveCallStartedAt, origin.addingTimeInterval(61))
+        XCTAssertEqual(engine.state.liveCallBundleIdentifier, "us.zoom.xos")
+        XCTAssertEqual(engine.state.lastTransitionReason, .liveCallStarted)
+    }
+
+    func testLiveMeetingOverrunDefersBreakUntilCallActuallyEnds() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(50),
+            endAt: origin.addingTimeInterval(90)
+        )
+        _ = engine.handle(
+            .updateCalendarConstraints([meeting]),
+            at: origin.addingTimeInterval(50)
+        )
+        let signal = BreakCallSignal(
+            bundleIdentifier: "com.google.Chrome",
+            confidence: .calendarCorrelatedBrowser
+        )
+        _ = engine.handle(
+            .updateCallActivity(signal),
+            at: origin.addingTimeInterval(52)
+        )
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(100)),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.calendarMeetingEndsAt, meeting.endAt)
+
+        let callEndedAt = origin.addingTimeInterval(110)
+        XCTAssertEqual(
+            engine.handle(.updateCallActivity(nil), at: callEndedAt),
+            .changed
+        )
+        XCTAssertNil(engine.state.liveCallStartedAt)
+        XCTAssertEqual(engine.state.focusDueAt, callEndedAt.addingTimeInterval(15))
+        XCTAssertEqual(engine.state.breakPlanReason, .postMeetingWarning)
+        XCTAssertEqual(engine.state.lastTransitionReason, .liveCallEnded)
+
+        XCTAssertEqual(engine.handle(.tick, at: callEndedAt), .changed)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(
+            engine.handle(.tick, at: callEndedAt.addingTimeInterval(15)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .required)
+    }
+
+    func testStartingBreakClearsLiveCallState() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(
+            .updateCallActivity(
+                BreakCallSignal(
+                    bundleIdentifier: "com.apple.FaceTime",
+                    confidence: .dedicatedApplication
+                )
+            ),
+            at: origin.addingTimeInterval(10)
+        )
+
+        XCTAssertEqual(
+            engine.handle(.startBreak, at: origin.addingTimeInterval(20)),
+            .changed
+        )
+        XCTAssertNil(engine.state.liveCallStartedAt)
+        XCTAssertNil(engine.state.liveCallBundleIdentifier)
+        XCTAssertNil(engine.state.liveCallConfidence)
+    }
+
     func testEmergencyActionsRecordDistinctReasons() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)

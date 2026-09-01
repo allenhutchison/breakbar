@@ -54,6 +54,43 @@ public struct BreakBarPresentation: Equatable, Sendable {
             primaryActionTitle = "Clock in"
 
         case .focusing:
+            if let liveCallStartedAt = state.liveCallStartedAt {
+                let timer: BreakBarTimerPresentation
+                let title: String
+                if let meetingStartsAt = state.calendarMeetingStartsAt,
+                   let meetingEndsAt = state.calendarMeetingEndsAt,
+                   now >= meetingStartsAt
+                {
+                    if now < meetingEndsAt {
+                        timer = BreakBarTimerPresentation(
+                            direction: .countDown,
+                            interval: meetingEndsAt.timeIntervalSince(now)
+                        )
+                        title = "In a meeting"
+                    } else {
+                        timer = BreakBarTimerPresentation(
+                            direction: .countUp,
+                            interval: now.timeIntervalSince(meetingEndsAt)
+                        )
+                        title = "Meeting overrun"
+                    }
+                } else {
+                    timer = BreakBarTimerPresentation(
+                        direction: .countUp,
+                        interval: now.timeIntervalSince(liveCallStartedAt)
+                    )
+                    title = "In a call"
+                }
+                statusLabel = ""
+                self.timer = timer
+                self.title = title
+                detail = "Break enforcement is paused while microphone call activity continues."
+                progress = 1
+                tone = .meeting
+                primaryActionTitle = nil
+                return
+            }
+
             if let meetingStartsAt = state.calendarMeetingStartsAt,
                let meetingEndsAt = state.calendarMeetingEndsAt,
                meetingStartsAt <= now,

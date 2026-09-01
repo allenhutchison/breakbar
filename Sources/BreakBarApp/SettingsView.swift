@@ -1,3 +1,4 @@
+import BreakBarCore
 import SwiftUI
 
 struct SettingsView: View {
@@ -32,6 +33,11 @@ struct SettingsView: View {
 
             CalendarSettingsSection(monitor: model.calendarMonitor)
 
+            CallActivitySettingsSection(
+                model: model,
+                monitor: model.callActivityMonitor
+            )
+
             Section("Accessories") {
                 Text("No accessories installed")
                 Text("BUSY Bar support will be added as an optional plugin after hardware validation.")
@@ -40,12 +46,72 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 520, height: 560)
+        .frame(width: 520, height: 680)
     }
 
     private func duration(_ seconds: TimeInterval) -> String {
         if seconds < 60 { return "\(Int(seconds)) seconds" }
         return "\(Int(seconds / 60)) minutes"
+    }
+}
+
+private struct CallActivitySettingsSection: View {
+    @ObservedObject var model: AppModel
+    @ObservedObject var monitor: CallActivityMonitor
+
+    var body: some View {
+        Section("Live meetings") {
+            LabeledContent("Detection", value: monitor.status.description)
+
+            Toggle(
+                "Treat browser microphone use as a meeting",
+                isOn: Binding(
+                    get: { model.allowUncorrelatedBrowserCalls },
+                    set: model.setAllowUncorrelatedBrowserCalls
+                )
+            )
+            Text("Enable this for ad-hoc Google Meet calls. Other browser recording or voice features may also count as meetings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let applicationName = model.activeCallApplicationName {
+                LabeledContent("Active call", value: applicationName)
+                if let confidence = model.acceptedCallSignal?.confidence {
+                    LabeledContent(
+                        "Confidence",
+                        value: confidenceDescription(confidence)
+                    )
+                }
+            } else if monitor.signal != nil {
+                Text("Browser microphone activity is only treated as a meeting when it is near an event on a selected calendar.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("No recognized call is active.")
+                    .foregroundStyle(.secondary)
+            }
+
+            if case let .unavailable(message) = monitor.status {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+
+            Text("BreakBar checks which recognized app is using microphone input. It never records or listens to audio, and falls back to calendar scheduling if detection is unavailable.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func confidenceDescription(_ confidence: BreakCallConfidence) -> String {
+        switch confidence {
+        case .dedicatedApplication:
+            "High · dedicated app"
+        case .calendarCorrelatedBrowser:
+            "Medium · calendar correlated"
+        case .userApprovedBrowser:
+            "Medium · browser rule"
+        }
     }
 }
 
