@@ -20,6 +20,7 @@ final class AppModel: ObservableObject {
     private var engine: BreakBarEngine
     private let repository: SessionRepository?
     private let overlayController = OverlayController()
+    private let breakReturnPanelController = BreakReturnPanelController()
     private var ticker: Task<Void, Never>?
     private var calendarObservation: AnyCancellable?
 
@@ -127,17 +128,11 @@ final class AppModel: ObservableObject {
     }
 
     func startBreak() {
-        let result = apply(.startBreak)
-        if result == .changed {
-            SystemActions.startScreensaver()
-        }
+        beginBreak(with: .startBreak)
     }
 
     func emergencyStartBreak() {
-        let result = apply(.emergencyStartBreak)
-        if result == .changed {
-            SystemActions.startScreensaver()
-        }
+        beginBreak(with: .emergencyStartBreak)
     }
 
     func returnToFocus() {
@@ -149,6 +144,14 @@ final class AppModel: ObservableObject {
         if case let .rejected(remaining) = result {
             lastMessage = "Stay away for another \(BreakBarPresentation.clock(remaining))."
         }
+    }
+
+    private func beginBreak(with command: BreakCommand) {
+        guard apply(command) == .changed else { return }
+        if let mediaMessage = MediaPlaybackController.pauseRunningPlayers() {
+            lastMessage = mediaMessage
+        }
+        SystemActions.startScreensaver()
     }
 
     func clearMessage() {
@@ -182,6 +185,7 @@ final class AppModel: ObservableObject {
         let eventDate = Date()
         applyCurrentCalendarConstraints(at: eventDate)
         _ = apply(.reconcile, at: eventDate)
+        synchronizeWindows(at: eventDate, bringReturnPanelToFront: true)
     }
 
     private func tick() {
@@ -234,7 +238,7 @@ final class AppModel: ObservableObject {
         if result == .changed {
             guard let repository else {
                 lastMessage = "The history database is unavailable, so the timer did not change."
-                synchronizeOverlay()
+                synchronizeWindows(at: eventDate)
                 return .unchanged
             }
             do {
@@ -245,7 +249,7 @@ final class AppModel: ObservableObject {
                 )
             } catch {
                 lastMessage = "The timer did not change because it could not be saved: \(error.localizedDescription)"
-                synchronizeOverlay()
+                synchronizeWindows(at: eventDate)
                 return .unchanged
             }
             engine = candidate
@@ -258,7 +262,7 @@ final class AppModel: ObservableObject {
                 revision: state.revision
             )
         }
-        synchronizeOverlay()
+        synchronizeWindows(at: eventDate)
         return result
     }
 
@@ -273,7 +277,10 @@ final class AppModel: ObservableObject {
             .appendingPathComponent(isDemoMode ? "breakbar-demo.sqlite" : "breakbar.sqlite")
     }
 
-    private func synchronizeOverlay() {
+    private func synchronizeWindows(
+        at date: Date,
+        bringReturnPanelToFront: Bool = false
+    ) {
         if state.phase == .focusing && state.enforcement == .required {
             overlayController.show(
                 startBreak: { [weak self] in self?.startBreak() },
@@ -283,6 +290,18 @@ final class AppModel: ObservableObject {
             )
         } else {
             overlayController.hide()
+        }
+
+        if state.phase == .onBreak {
+            breakReturnPanelController.show(
+                presentation: BreakBarPresentation(state: state, policy: policy, now: date),
+                canReturn: (state.minimumBreakEndsAt ?? date) <= date,
+                bringToFront: bringReturnPanelToFront,
+                returnToFocus: { [weak self] in self?.returnToFocus() },
+                clockOut: { [weak self] in self?.clockOut() }
+            )
+        } else {
+            breakReturnPanelController.hide()
         }
     }
 

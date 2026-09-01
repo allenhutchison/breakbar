@@ -54,6 +54,25 @@ final class BreakBarPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "Return to focus")
     }
 
+    func testEarlyBreakReturnRemainsUnavailable() {
+        let state = BreakBarState(
+            phase: .onBreak,
+            phaseStartedAt: origin,
+            minimumBreakEndsAt: origin.addingTimeInterval(20),
+            revision: 3
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(10)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "0:10")
+        XCTAssertEqual(presentation.title, "Stay away a little longer")
+        XCTAssertNil(presentation.primaryActionTitle)
+    }
+
     func testActiveMeetingReplacesBreakEnforcementCountdown() {
         let state = BreakBarState(
             phase: .focusing,
