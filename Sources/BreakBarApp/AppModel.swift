@@ -1,6 +1,7 @@
 import AppKit
 import BreakBarCore
 import BreakBarPersistence
+import Combine
 import Foundation
 import ServiceManagement
 
@@ -20,6 +21,7 @@ final class AppModel: ObservableObject {
     private let repository: SessionRepository?
     private let overlayController = OverlayController()
     private var ticker: Task<Void, Never>?
+    private var calendarObservation: AnyCancellable?
 
     init() {
         isDemoMode = CommandLine.arguments.contains("--demo")
@@ -53,6 +55,12 @@ final class AppModel: ObservableObject {
         launchAtLoginMessage = nil
         refreshLaunchAtLoginStatus()
 
+        calendarObservation = calendarMonitor.$schedulingConstraints
+            .removeDuplicates()
+            .sink { [weak self] constraints in
+                self?.calendarConstraintsChanged(constraints)
+            }
+
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 let currentTime = Date().timeIntervalSince1970
@@ -80,6 +88,7 @@ final class AppModel: ObservableObject {
         switch presentation.tone {
         case .neutral: "figure.stand"
         case .focus: "timer"
+        case .meeting: "video.fill"
         case .warning: "exclamationmark.circle.fill"
         case .required: "figure.walk.motion"
         case .breakTime: "cup.and.heat.waves.fill"
@@ -103,7 +112,10 @@ final class AppModel: ObservableObject {
     }
 
     func clockIn() {
-        apply(.clockIn)
+        let eventDate = Date()
+        if apply(.clockIn, at: eventDate) == .changed {
+            applyCurrentCalendarConstraints(at: eventDate)
+        }
     }
 
     func clockOut() {
@@ -129,7 +141,11 @@ final class AppModel: ObservableObject {
     }
 
     func returnToFocus() {
-        let result = apply(.returnToFocus)
+        let eventDate = Date()
+        let result = apply(.returnToFocus, at: eventDate)
+        if result == .changed {
+            applyCurrentCalendarConstraints(at: eventDate)
+        }
         if case let .rejected(remaining) = result {
             lastMessage = "Stay away for another \(BreakBarPresentation.clock(remaining))."
         }
@@ -164,13 +180,15 @@ final class AppModel: ObservableObject {
 
     func reconcileAfterLifecycleEvent() {
         let eventDate = Date()
+        applyCurrentCalendarConstraints(at: eventDate)
         _ = apply(.reconcile, at: eventDate)
     }
 
     private func tick() {
         let eventDate = Date()
         let displayedText = presentation.shortLabel
-        let result = apply(.tick, at: eventDate, publishTime: false)
+        let calendarResult = applyCurrentCalendarConstraints(at: eventDate)
+        let timerResult = apply(.tick, at: eventDate, publishTime: false)
         let nextText = BreakBarPresentation(
             state: state,
             policy: policy,
@@ -179,9 +197,24 @@ final class AppModel: ObservableObject {
 
         // A timer wake-up is not itself a UI change. Publish only when the
         // formatted second or state actually changed.
-        if result == .changed || nextText != displayedText {
+        if calendarResult == .changed || timerResult == .changed || nextText != displayedText {
             now = eventDate
         }
+    }
+
+    private func calendarConstraintsChanged(_ constraints: [BreakCalendarConstraint]) {
+        let eventDate = Date()
+        _ = apply(.updateCalendarConstraints(constraints), at: eventDate)
+        _ = apply(.tick, at: eventDate)
+    }
+
+    @discardableResult
+    private func applyCurrentCalendarConstraints(at date: Date) -> BreakCommandResult {
+        apply(
+            .updateCalendarConstraints(calendarMonitor.schedulingConstraints),
+            at: date,
+            publishTime: false
+        )
     }
 
     @discardableResult

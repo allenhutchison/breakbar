@@ -24,6 +24,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
     public enum Tone: Equatable, Sendable {
         case neutral
         case focus
+        case meeting
         case warning
         case required
         case breakTime
@@ -53,6 +54,23 @@ public struct BreakBarPresentation: Equatable, Sendable {
             primaryActionTitle = "Clock in"
 
         case .focusing:
+            if let meetingStartsAt = state.calendarMeetingStartsAt,
+               let meetingEndsAt = state.calendarMeetingEndsAt,
+               meetingStartsAt <= now,
+               now < meetingEndsAt
+            {
+                let remaining = meetingEndsAt.timeIntervalSince(now)
+                let duration = max(1, meetingEndsAt.timeIntervalSince(meetingStartsAt))
+                statusLabel = ""
+                timer = BreakBarTimerPresentation(direction: .countDown, interval: remaining)
+                title = "In a meeting"
+                detail = "Break enforcement is paused until this scheduled meeting ends."
+                progress = min(1, max(0, now.timeIntervalSince(meetingStartsAt) / duration))
+                tone = .meeting
+                primaryActionTitle = nil
+                return
+            }
+
             let remaining = max(0, (state.focusDueAt ?? now).timeIntervalSince(now))
             if state.enforcement == .required {
                 statusLabel = "BREAK"
@@ -64,11 +82,24 @@ public struct BreakBarPresentation: Equatable, Sendable {
             title = state.enforcement == .required
                 ? "Time to get up"
                 : state.enforcement == .warning ? "Find a stopping point" : "Focus"
-            detail = state.enforcement == .required
-                ? "Start the break on this Mac or with a connected accessory."
-                : state.enforcement == .warning
-                    ? "Your break begins in \(Self.spoken(remaining))."
-                    : "Next break in \(Self.spoken(remaining))."
+            if state.enforcement == .required {
+                detail = "Start the break on this Mac or with a connected accessory."
+            } else if state.enforcement == .warning {
+                detail = state.breakPlanReason == .postMeetingWarning
+                    ? "Your meeting ended. Break begins in \(Self.spoken(remaining))."
+                    : "Your break begins in \(Self.spoken(remaining))."
+            } else {
+                switch state.breakPlanReason {
+                case .pulledBeforeMeeting:
+                    detail = "Break moved before your next meeting: \(Self.spoken(remaining)) remaining."
+                case .deferredThroughMeeting:
+                    detail = "Break follows your meeting with a fresh warning."
+                case .postMeetingWarning:
+                    detail = "Your meeting ended. Break begins in \(Self.spoken(remaining))."
+                case .nominal, nil:
+                    detail = "Next break in \(Self.spoken(remaining))."
+                }
+            }
             progress = min(1, max(0, 1 - remaining / policy.focusDuration))
             tone = state.enforcement == .required ? .required : state.enforcement == .warning ? .warning : .focus
             primaryActionTitle = state.enforcement == .required ? "Start break" : "Take a break now"

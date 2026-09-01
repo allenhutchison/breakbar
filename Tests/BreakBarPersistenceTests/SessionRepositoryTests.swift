@@ -157,6 +157,32 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testCalendarPlanPersistsWithoutSplittingFocusHistory() throws {
+        try withRepository { repository, databaseURL in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let meeting = BreakCalendarConstraint(
+                id: "transient-event-id",
+                startAt: origin.addingTimeInterval(70),
+                endAt: origin.addingTimeInterval(120)
+            )
+            try commit(
+                .updateCalendarConstraints([meeting]),
+                at: origin,
+                engine: &engine,
+                repository: repository
+            )
+
+            let reopened = try SessionRepository(url: databaseURL)
+            let recovered = try XCTUnwrap(reopened.loadState())
+            XCTAssertEqual(recovered.focusDueAt, origin.addingTimeInterval(50))
+            XCTAssertEqual(recovered.breakPlanReason, .pulledBeforeMeeting)
+            XCTAssertEqual(try reopened.stats().totalIntervals, 1)
+            XCTAssertEqual(try reopened.stats().openIntervals, 1)
+        }
+    }
+
     func testStaleTransitionRollsBackWithoutChangingHistory() throws {
         try withRepository { repository, _ in
             var engine = BreakBarEngine(policy: policy)

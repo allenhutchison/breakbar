@@ -93,6 +93,139 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.revision, revision)
     }
 
+    func testCalendarPullsBreakBeforeMeeting() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(70),
+            endAt: origin.addingTimeInterval(120)
+        )
+
+        XCTAssertEqual(
+            engine.handle(.updateCalendarConstraints([meeting]), at: origin),
+            .changed
+        )
+        XCTAssertEqual(engine.state.nominalFocusDueAt, origin.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(50))
+        XCTAssertEqual(engine.state.breakPlanReason, .pulledBeforeMeeting)
+    }
+
+    func testActiveMeetingSuppressesVisibleEnforcement() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(50))
+        XCTAssertEqual(engine.state.enforcement, .warning)
+
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(50),
+            endAt: origin.addingTimeInterval(90)
+        )
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([meeting]),
+                at: origin.addingTimeInterval(50)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.lastTransitionReason, .scheduledMeetingStarted)
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(70)),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+    }
+
+    func testActiveMeetingWindowSurvivesTransientEmptyCalendarRefresh() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(50),
+            endAt: origin.addingTimeInterval(90)
+        )
+        _ = engine.handle(
+            .updateCalendarConstraints([meeting]),
+            at: origin.addingTimeInterval(50)
+        )
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([]),
+                at: origin.addingTimeInterval(70)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(105))
+        XCTAssertEqual(engine.state.calendarMeetingStartsAt, meeting.startAt)
+        XCTAssertEqual(engine.state.calendarMeetingEndsAt, meeting.endAt)
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(70)),
+            .unchanged
+        )
+    }
+
+    func testMeetingStartSuppressesAlreadyRequiredBreak() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.enforcement, .required)
+
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(85),
+            endAt: origin.addingTimeInterval(120)
+        )
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([meeting]),
+                at: origin.addingTimeInterval(85)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.lastTransitionReason, .scheduledMeetingStarted)
+    }
+
+    func testOverdueMeetingEndStartsFreshFullWarning() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(50),
+            endAt: origin.addingTimeInterval(90)
+        )
+        _ = engine.handle(
+            .updateCalendarConstraints([meeting]),
+            at: origin.addingTimeInterval(50)
+        )
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(90)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(105))
+        XCTAssertEqual(engine.state.breakPlanReason, .postMeetingWarning)
+        XCTAssertEqual(engine.state.lastTransitionReason, .scheduledMeetingEnded)
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(91)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .warning)
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(105)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .required)
+    }
+
     func testEmergencyActionsRecordDistinctReasons() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)

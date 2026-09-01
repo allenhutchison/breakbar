@@ -194,6 +194,8 @@ struct BreakPalette {
             accent = Color(nsColor: .systemGray)
         case .focus:
             accent = Color(red: 0.16, green: 0.47, blue: 0.88)
+        case .meeting:
+            accent = Color(red: 0.48, green: 0.35, blue: 0.82)
         case .warning:
             accent = Color(red: 0.96, green: 0.61, blue: 0.08)
         case .required:

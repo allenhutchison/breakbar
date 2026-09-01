@@ -1,3 +1,4 @@
+import BreakBarCore
 import EventKit
 import Foundation
 
@@ -42,6 +43,7 @@ final class CalendarMonitor: NSObject, ObservableObject {
     @Published private(set) var calendars: [BreakBarCalendar] = []
     @Published private(set) var selectedCalendarIDs: Set<String> = []
     @Published private(set) var nextEvent: UpcomingCalendarEvent?
+    @Published private(set) var schedulingConstraints: [BreakCalendarConstraint] = []
     @Published private(set) var message: String?
 
     private static let selectionKey = "calendar.selectedIdentifiers"
@@ -100,6 +102,7 @@ final class CalendarMonitor: NSObject, ObservableObject {
         guard accessState == .fullAccess else {
             calendars = []
             nextEvent = nil
+            schedulingConstraints = []
             return
         }
 
@@ -130,6 +133,7 @@ final class CalendarMonitor: NSObject, ObservableObject {
     private func refreshEvents(using calendars: [EKCalendar]? = nil) {
         guard accessState == .fullAccess, !selectedCalendarIDs.isEmpty else {
             nextEvent = nil
+            schedulingConstraints = []
             return
         }
 
@@ -141,10 +145,11 @@ final class CalendarMonitor: NSObject, ObservableObject {
             end: now.addingTimeInterval(7 * 24 * 60 * 60),
             calendars: includedCalendars
         )
-        nextEvent = eventStore.events(matching: predicate)
+        let events = eventStore.events(matching: predicate)
             .filter { $0.status != .canceled && $0.endDate > now }
             .sorted { $0.startDate < $1.startDate }
-            .first
+
+        nextEvent = events.first
             .map {
                 let title = ($0.title?.isEmpty == false ? $0.title : nil) ?? "Untitled event"
                 return UpcomingCalendarEvent(
@@ -154,6 +159,16 @@ final class CalendarMonitor: NSObject, ObservableObject {
                     startDate: $0.startDate,
                     endDate: $0.endDate,
                     isAllDay: $0.isAllDay
+                )
+            }
+        schedulingConstraints = events
+            .filter { !$0.isAllDay && $0.endDate > $0.startDate }
+            .map {
+                BreakCalendarConstraint(
+                    id: $0.eventIdentifier
+                        ?? "\($0.calendarItemIdentifier):\($0.startDate.timeIntervalSinceReferenceDate)",
+                    startAt: $0.startDate,
+                    endAt: $0.endDate
                 )
             }
     }

@@ -21,14 +21,28 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case lifecycleReconciliation
     case emergencyStartBreak
     case emergencyClockOut
+    case calendarPlanUpdated
+    case scheduledMeetingStarted
+    case scheduledMeetingEnded
+}
+
+public enum BreakPlanReason: String, Codable, Equatable, Sendable {
+    case nominal
+    case pulledBeforeMeeting
+    case deferredThroughMeeting
+    case postMeetingWarning
 }
 
 public struct BreakBarState: Codable, Equatable, Sendable {
     public var phase: BreakBarPhase
     public var enforcement: BreakEnforcement
     public var phaseStartedAt: Date?
+    public var nominalFocusDueAt: Date?
     public var focusDueAt: Date?
     public var minimumBreakEndsAt: Date?
+    public var breakPlanReason: BreakPlanReason?
+    public var calendarMeetingStartsAt: Date?
+    public var calendarMeetingEndsAt: Date?
     public var lastTransitionReason: BreakTransitionReason?
     public var revision: UInt64
 
@@ -36,16 +50,24 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         phase: BreakBarPhase = .clockedOut,
         enforcement: BreakEnforcement = .none,
         phaseStartedAt: Date? = nil,
+        nominalFocusDueAt: Date? = nil,
         focusDueAt: Date? = nil,
         minimumBreakEndsAt: Date? = nil,
+        breakPlanReason: BreakPlanReason? = nil,
+        calendarMeetingStartsAt: Date? = nil,
+        calendarMeetingEndsAt: Date? = nil,
         lastTransitionReason: BreakTransitionReason? = nil,
         revision: UInt64 = 0
     ) {
         self.phase = phase
         self.enforcement = enforcement
         self.phaseStartedAt = phaseStartedAt
+        self.nominalFocusDueAt = nominalFocusDueAt
         self.focusDueAt = focusDueAt
         self.minimumBreakEndsAt = minimumBreakEndsAt
+        self.breakPlanReason = breakPlanReason
+        self.calendarMeetingStartsAt = calendarMeetingStartsAt
+        self.calendarMeetingEndsAt = calendarMeetingEndsAt
         self.lastTransitionReason = lastTransitionReason
         self.revision = revision
     }
@@ -60,6 +82,7 @@ public enum BreakCommand: Equatable, Sendable {
     case reconcile
     case emergencyStartBreak
     case emergencyClockOut
+    case updateCalendarConstraints([BreakCalendarConstraint])
 }
 
 public enum BreakCommandResult: Equatable, Sendable {

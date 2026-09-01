@@ -54,6 +54,50 @@ final class BreakBarPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "Return to focus")
     }
 
+    func testActiveMeetingReplacesBreakEnforcementCountdown() {
+        let state = BreakBarState(
+            phase: .focusing,
+            enforcement: .none,
+            phaseStartedAt: origin,
+            nominalFocusDueAt: origin.addingTimeInterval(60),
+            focusDueAt: origin.addingTimeInterval(105),
+            breakPlanReason: .deferredThroughMeeting,
+            calendarMeetingStartsAt: origin.addingTimeInterval(50),
+            calendarMeetingEndsAt: origin.addingTimeInterval(90),
+            revision: 3
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(70)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "0:20")
+        XCTAssertEqual(presentation.title, "In a meeting")
+        XCTAssertEqual(presentation.tone, .meeting)
+        XCTAssertNil(presentation.primaryActionTitle)
+    }
+
+    func testPulledBreakExplainsCalendarAdjustment() {
+        let state = BreakBarState(
+            phase: .focusing,
+            phaseStartedAt: origin,
+            nominalFocusDueAt: origin.addingTimeInterval(60),
+            focusDueAt: origin.addingTimeInterval(50),
+            breakPlanReason: .pulledBeforeMeeting,
+            revision: 2
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin
+        )
+
+        XCTAssertTrue(presentation.detail.contains("moved before your next meeting"))
+    }
+
     func testTimerFormattingIsSharedAcrossStates() {
         XCTAssertEqual(
             BreakBarTimerPresentation(direction: .countDown, interval: 65).text,

@@ -51,6 +51,9 @@ public struct BreakBarEngine: Sendable {
                 at: now,
                 reason: command == .tick ? .timerDeadline : .lifecycleReconciliation
             )
+
+        case let .updateCalendarConstraints(constraints):
+            return updateCalendarPlan(constraints, at: now)
         }
     }
 
@@ -62,8 +65,12 @@ public struct BreakBarEngine: Sendable {
         state.phase = .onBreak
         state.enforcement = .none
         state.phaseStartedAt = now
+        state.nominalFocusDueAt = nil
         state.focusDueAt = nil
         state.minimumBreakEndsAt = now.addingTimeInterval(policy.minimumBreakDuration)
+        state.breakPlanReason = nil
+        state.calendarMeetingStartsAt = nil
+        state.calendarMeetingEndsAt = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
         return .changed
@@ -75,6 +82,16 @@ public struct BreakBarEngine: Sendable {
     ) -> BreakCommandResult {
         guard state.phase == .focusing, let dueAt = state.focusDueAt else {
             return .unchanged
+        }
+        if meetingIsActive(at: now) {
+            guard state.enforcement != .none else { return .unchanged }
+            state.enforcement = .none
+            state.lastTransitionReason = .scheduledMeetingStarted
+            state.revision &+= 1
+            return .changed
+        }
+        if let result = reconcileEndedMeeting(at: now) {
+            return result
         }
         let deadlineEnforcement: BreakEnforcement
         if now >= dueAt {
@@ -99,10 +116,122 @@ public struct BreakBarEngine: Sendable {
         state.phase = .focusing
         state.enforcement = .none
         state.phaseStartedAt = now
-        state.focusDueAt = now.addingTimeInterval(policy.focusDuration)
+        let nominalDueAt = now.addingTimeInterval(policy.focusDuration)
+        state.nominalFocusDueAt = nominalDueAt
+        state.focusDueAt = nominalDueAt
         state.minimumBreakEndsAt = nil
+        state.breakPlanReason = .nominal
+        state.calendarMeetingStartsAt = nil
+        state.calendarMeetingEndsAt = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
+    }
+
+    private mutating func updateCalendarPlan(
+        _ constraints: [BreakCalendarConstraint],
+        at now: Date
+    ) -> BreakCommandResult {
+        guard state.phase == .focusing, let cycleStartedAt = state.phaseStartedAt else {
+            return .unchanged
+        }
+        if let result = reconcileEndedMeeting(at: now) {
+            return result
+        }
+
+        let plan = BreakSchedulePlanner.plan(
+            cycleStartedAt: cycleStartedAt,
+            now: now,
+            policy: policy,
+            constraints: constraints
+        )
+        var calendarMeetingStartsAt = plan.meetingStartsAt
+        var calendarMeetingEndsAt = plan.meetingEndsAt
+        var calendarMeetingIsActive = plan.meetingIsActive(at: now)
+        var plannedBreakAt = plan.plannedBreakAt
+        var planReason = plan.reason
+
+        // Once a scheduled meeting begins, retain its known window through the
+        // scheduled end even if EventKit briefly returns an empty result.
+        if !calendarMeetingIsActive,
+           meetingIsActive(at: now),
+           let storedMeetingStartsAt = state.calendarMeetingStartsAt,
+           let storedMeetingEndsAt = state.calendarMeetingEndsAt
+        {
+            calendarMeetingStartsAt = storedMeetingStartsAt
+            calendarMeetingEndsAt = storedMeetingEndsAt
+            calendarMeetingIsActive = true
+            if now >= plan.nominalBreakAt {
+                plannedBreakAt = storedMeetingEndsAt.addingTimeInterval(policy.warningDuration)
+                planReason = .deferredThroughMeeting
+            }
+        }
+
+        if !calendarMeetingIsActive,
+           state.breakPlanReason == .postMeetingWarning,
+           let currentDueAt = state.focusDueAt,
+           now < currentDueAt
+        {
+            plannedBreakAt = currentDueAt
+            planReason = .postMeetingWarning
+        } else if !calendarMeetingIsActive,
+                  state.enforcement != .none,
+                  let currentDueAt = state.focusDueAt,
+                  plannedBreakAt > currentDueAt
+        {
+            plannedBreakAt = currentDueAt
+            planReason = state.breakPlanReason ?? .nominal
+        }
+
+        var candidate = state
+        candidate.nominalFocusDueAt = plan.nominalBreakAt
+        candidate.focusDueAt = plannedBreakAt
+        candidate.breakPlanReason = planReason
+        candidate.calendarMeetingStartsAt = calendarMeetingStartsAt
+        candidate.calendarMeetingEndsAt = calendarMeetingEndsAt
+        if calendarMeetingIsActive {
+            candidate.enforcement = .none
+        }
+        guard candidate != state else { return .unchanged }
+        candidate.lastTransitionReason = calendarMeetingIsActive
+            ? .scheduledMeetingStarted
+            : .calendarPlanUpdated
+        candidate.revision &+= 1
+        state = candidate
+        return .changed
+    }
+
+    private mutating func reconcileEndedMeeting(at now: Date) -> BreakCommandResult? {
+        guard let meetingEndsAt = state.calendarMeetingEndsAt,
+              now >= meetingEndsAt
+        else {
+            return nil
+        }
+
+        let nominalDueAt = state.nominalFocusDueAt
+            ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
+            ?? now
+        state.calendarMeetingStartsAt = nil
+        state.calendarMeetingEndsAt = nil
+        state.enforcement = .none
+        if now >= nominalDueAt {
+            state.focusDueAt = now.addingTimeInterval(policy.warningDuration)
+            state.breakPlanReason = .postMeetingWarning
+        } else {
+            state.focusDueAt = nominalDueAt
+            state.breakPlanReason = .nominal
+        }
+        state.lastTransitionReason = .scheduledMeetingEnded
+        state.revision &+= 1
+        return .changed
+    }
+
+    private func meetingIsActive(at now: Date) -> Bool {
+        guard let startAt = state.calendarMeetingStartsAt,
+              let endAt = state.calendarMeetingEndsAt
+        else {
+            return false
+        }
+        return startAt <= now && now < endAt
     }
 
     private func maxEnforcement(
