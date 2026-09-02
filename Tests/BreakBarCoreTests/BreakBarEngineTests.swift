@@ -641,4 +641,75 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.focusDueAt, returnedAt.addingTimeInterval(60))
         XCTAssertNil(engine.state.travelChain)
     }
+
+    func testLateObservedTravelStartsDuringCalendarUpdate() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let travel = BreakCalendarConstraint(
+            id: "travel",
+            startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(300),
+            kind: .travel
+        )
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([travel]),
+                at: origin.addingTimeInterval(150)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .traveling)
+        XCTAssertEqual(engine.state.enforcement, .travelRequired)
+        XCTAssertEqual(engine.state.lastTransitionReason, .travelStarted)
+    }
+
+    func testActiveTravelUsesRefreshedChainEndAndDropsRemovedReturn() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let outbound = BreakCalendarConstraint(
+            id: "outbound",
+            startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(200),
+            kind: .travel
+        )
+        let returning = BreakCalendarConstraint(
+            id: "return",
+            startAt: origin.addingTimeInterval(300),
+            endAt: origin.addingTimeInterval(500),
+            kind: .travel
+        )
+        _ = engine.handle(.updateCalendarConstraints([outbound, returning]), at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(100))
+        _ = engine.handle(.acknowledgeTravel, at: origin.addingTimeInterval(101))
+
+        let shortenedReturn = BreakCalendarConstraint(
+            id: "return",
+            startAt: origin.addingTimeInterval(300),
+            endAt: origin.addingTimeInterval(350),
+            kind: .travel
+        )
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([outbound, shortenedReturn]),
+                at: origin.addingTimeInterval(150)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.travelChain?.map(\.endAt).max(), shortenedReturn.endAt)
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([outbound]),
+                at: origin.addingTimeInterval(160)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.travelChain?.map(\.id), ["outbound"])
+        XCTAssertEqual(
+            engine.handle(.returnHome, at: origin.addingTimeInterval(200)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+    }
 }

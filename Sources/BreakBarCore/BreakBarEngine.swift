@@ -517,7 +517,17 @@ public struct BreakBarEngine: Sendable {
         guard state.phase != .clockedOut else { return nil }
 
         if state.phase == .traveling || state.phase == .offsiteMeeting {
-            return updateTravelTimeline(at: now)
+            let reconciledChain = reconcileActiveTravelChain(
+                with: constraints,
+                at: now
+            )
+            let chainChanged = state.travelChain != reconciledChain
+            if chainChanged {
+                state.travelChain = reconciledChain
+                state.lastTransitionReason = .travelPlanUpdated
+                state.revision &+= 1
+            }
+            return updateTravelTimeline(at: now) ?? (chainChanged ? .changed : nil)
         }
 
         let chain = BreakTravelPlanner.nextChain(in: constraints, at: now)
@@ -528,9 +538,52 @@ public struct BreakBarEngine: Sendable {
             }
             state.lastTransitionReason = .travelPlanUpdated
             state.revision &+= 1
-            return .changed
+            return updateTravelTimeline(at: now) ?? .changed
         }
         return updateTravelTimeline(at: now)
+    }
+
+    private func reconcileActiveTravelChain(
+        with constraints: [BreakCalendarConstraint],
+        at now: Date
+    ) -> [BreakCalendarConstraint] {
+        let storedChain = state.travelChain ?? []
+        let refreshedByID = Dictionary(
+            constraints.map { ($0.id, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        var reconciled = storedChain.compactMap { stored -> BreakCalendarConstraint? in
+            if let refreshed = refreshedByID[stored.id] {
+                return refreshed
+            }
+            if stored.endAt <= now {
+                return stored
+            }
+            if stored.startAt <= now {
+                return BreakCalendarConstraint(
+                    id: stored.id,
+                    startAt: stored.startAt,
+                    endAt: now,
+                    kind: stored.kind
+                )
+            }
+            return nil
+        }
+
+        if let freshChain = BreakTravelPlanner.nextChain(in: constraints, at: now) {
+            let anchorEnd = max(now, reconciled.map(\.endAt).max() ?? now)
+            if let freshStart = freshChain.map(\.startAt).min(),
+               freshStart <= anchorEnd.addingTimeInterval(BreakTravelPlanner.adjacency)
+            {
+                let existingIDs = Set(reconciled.map(\.id))
+                reconciled.append(contentsOf: freshChain.filter { !existingIDs.contains($0.id) })
+            }
+        }
+
+        return reconciled.sorted {
+            if $0.startAt == $1.startAt { return $0.endAt < $1.endAt }
+            return $0.startAt < $1.startAt
+        }
     }
 
     private mutating func updateTravelTimeline(at now: Date) -> BreakCommandResult? {
