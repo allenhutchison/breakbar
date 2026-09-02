@@ -382,6 +382,65 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testTravelChainPersistsAndRecordsTravelAndOffsiteIntervals() throws {
+        try withRepository { repository, databaseURL in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let outbound = BreakCalendarConstraint(
+                id: "outbound", startAt: origin.addingTimeInterval(100),
+                endAt: origin.addingTimeInterval(200), kind: .travel
+            )
+            let offsite = BreakCalendarConstraint(
+                id: "offsite", startAt: origin.addingTimeInterval(200),
+                endAt: origin.addingTimeInterval(300), kind: .offsiteMeeting
+            )
+            let returning = BreakCalendarConstraint(
+                id: "return", startAt: origin.addingTimeInterval(300),
+                endAt: origin.addingTimeInterval(400), kind: .travel
+            )
+            let chain = [outbound, offsite, returning]
+            try commit(
+                .updateCalendarConstraints(chain), at: origin,
+                engine: &engine, repository: repository
+            )
+            try commit(
+                .tick, at: origin.addingTimeInterval(100),
+                engine: &engine, repository: repository
+            )
+            try commit(
+                .acknowledgeTravel, at: origin.addingTimeInterval(101),
+                engine: &engine, repository: repository
+            )
+
+            let reopened = try SessionRepository(url: databaseURL)
+            var recoveredEngine = BreakBarEngine(
+                state: try XCTUnwrap(reopened.loadState()),
+                policy: policy
+            )
+            XCTAssertEqual(recoveredEngine.state.travelChain, chain)
+            try commit(
+                .tick, at: origin.addingTimeInterval(200),
+                engine: &recoveredEngine, repository: reopened
+            )
+            try commit(
+                .tick, at: origin.addingTimeInterval(300),
+                engine: &recoveredEngine, repository: reopened
+            )
+            try commit(
+                .returnHome, at: origin.addingTimeInterval(400),
+                engine: &recoveredEngine, repository: reopened
+            )
+
+            let stats = try reopened.stats()
+            XCTAssertEqual(stats.totalIntervals, 5)
+            XCTAssertEqual(stats.travelIntervals, 2)
+            XCTAssertEqual(stats.meetingIntervals, 1)
+            XCTAssertEqual(stats.focusIntervals, 2)
+            XCTAssertEqual(recoveredEngine.state.phase, .focusing)
+        }
+    }
+
     func testLiveCallPersistsWithoutSplittingFocusHistory() throws {
         try withRepository { repository, databaseURL in
             var engine = BreakBarEngine(policy: policy)

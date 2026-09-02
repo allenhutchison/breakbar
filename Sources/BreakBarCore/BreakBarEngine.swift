@@ -46,6 +46,23 @@ public struct BreakBarEngine: Sendable {
             beginFocus(at: now, reason: .returnToFocus)
             return .changed
 
+        case .acknowledgeTravel:
+            guard state.phase == .traveling,
+                  state.enforcement == .travelRequired
+            else { return .unchanged }
+            state.enforcement = .none
+            state.lastTransitionReason = .travelAcknowledged
+            state.revision &+= 1
+            return .changed
+
+        case .returnHome:
+            guard state.phase == .traveling || state.phase == .offsiteMeeting,
+                  let chainEnd = state.travelChain?.map(\.endAt).max(),
+                  now >= chainEnd
+            else { return .unchanged }
+            beginFocus(at: now, reason: .returnHome)
+            return .changed
+
         case .startLunch:
             guard state.phase == .focusing else { return .unchanged }
             beginLunch(at: now)
@@ -102,12 +119,18 @@ public struct BreakBarEngine: Sendable {
             return .changed
 
         case .tick, .reconcile:
+            if let result = updateTravelTimeline(at: now) {
+                return result
+            }
             return updateEnforcement(
                 at: now,
                 reason: command == .tick ? .timerDeadline : .lifecycleReconciliation
             )
 
         case let .updateCalendarConstraints(constraints):
+            if let result = updateTravelPlan(constraints, at: now) {
+                return result
+            }
             return updateCalendarPlan(constraints, at: now)
 
         case let .updateCallActivity(signal):
@@ -236,6 +259,7 @@ public struct BreakBarEngine: Sendable {
         guard state.phase == .focusing, let dueAt = state.focusDueAt else {
             return .unchanged
         }
+        guard state.enforcement != .travelWarning else { return .unchanged }
         if state.manualMeetingStartedAt != nil {
             guard state.enforcement != .none else { return .unchanged }
             state.enforcement = .none
@@ -296,6 +320,7 @@ public struct BreakBarEngine: Sendable {
         state.manualMeetingStartedAt = nil
         state.awayPreviousFocusStartedAt = nil
         state.awayReturnDetectedAt = nil
+        state.travelChain = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
     }
@@ -307,6 +332,7 @@ public struct BreakBarEngine: Sendable {
         guard state.phase == .focusing, let cycleStartedAt = state.phaseStartedAt else {
             return .unchanged
         }
+        guard state.enforcement != .travelWarning else { return .unchanged }
         guard state.manualMeetingStartedAt == nil else { return .unchanged }
         if let result = reconcileEndedMeeting(at: now) {
             return result
@@ -474,7 +500,113 @@ public struct BreakBarEngine: Sendable {
         _ lhs: BreakEnforcement,
         _ rhs: BreakEnforcement
     ) -> BreakEnforcement {
-        let rank: [BreakEnforcement: Int] = [.none: 0, .warning: 1, .required: 2]
+        let rank: [BreakEnforcement: Int] = [
+            .none: 0,
+            .warning: 1,
+            .travelWarning: 2,
+            .required: 3,
+            .travelRequired: 4,
+        ]
         return rank[lhs, default: 0] >= rank[rhs, default: 0] ? lhs : rhs
+    }
+
+    private mutating func updateTravelPlan(
+        _ constraints: [BreakCalendarConstraint],
+        at now: Date
+    ) -> BreakCommandResult? {
+        guard state.phase != .clockedOut else { return nil }
+
+        if state.phase == .traveling || state.phase == .offsiteMeeting {
+            return updateTravelTimeline(at: now)
+        }
+
+        let chain = BreakTravelPlanner.nextChain(in: constraints, at: now)
+        if state.travelChain != chain {
+            state.travelChain = chain
+            if chain == nil, state.enforcement == .travelWarning {
+                state.enforcement = .none
+            }
+            state.lastTransitionReason = .travelPlanUpdated
+            state.revision &+= 1
+            return .changed
+        }
+        return updateTravelTimeline(at: now)
+    }
+
+    private mutating func updateTravelTimeline(at now: Date) -> BreakCommandResult? {
+        guard state.phase != .clockedOut,
+              let chain = state.travelChain,
+              let chainStart = chain.map(\.startAt).min(),
+              let chainEnd = chain.map(\.endAt).max()
+        else { return nil }
+
+        if state.phase == .traveling || state.phase == .offsiteMeeting {
+            let activeKind = BreakTravelPlanner.activeKind(in: chain, at: now)
+            let desiredPhase: BreakBarPhase = activeKind == .offsiteMeeting
+                ? .offsiteMeeting
+                : .traveling
+
+            if now >= chainEnd {
+                guard state.phase != .traveling || state.enforcement != .none else {
+                    return nil
+                }
+                state.phase = .traveling
+                state.enforcement = .none
+                state.phaseStartedAt = now
+                state.lastTransitionReason = .travelChainEnded
+                state.revision &+= 1
+                return .changed
+            }
+
+            guard desiredPhase != state.phase else { return nil }
+            state.phase = desiredPhase
+            state.enforcement = .none
+            state.phaseStartedAt = now
+            state.lastTransitionReason = desiredPhase == .offsiteMeeting
+                ? .offsiteMeetingStarted
+                : .offsiteMeetingEnded
+            state.revision &+= 1
+            return .changed
+        }
+
+        if now >= chainStart {
+            beginTravel(at: now, chain: chain)
+            return .changed
+        }
+
+        let warningStartsAt = chainStart.addingTimeInterval(-BreakTravelPlanner.warningDuration)
+        guard state.phase == .focusing,
+              now >= warningStartsAt,
+              state.enforcement != .required,
+              state.enforcement != .travelWarning
+        else { return nil }
+        state.enforcement = .travelWarning
+        state.lastTransitionReason = .travelWarningStarted
+        state.revision &+= 1
+        return .changed
+    }
+
+    private mutating func beginTravel(
+        at now: Date,
+        chain: [BreakCalendarConstraint]
+    ) {
+        state.phase = .traveling
+        state.enforcement = .travelRequired
+        state.phaseStartedAt = now
+        state.nominalFocusDueAt = nil
+        state.focusDueAt = nil
+        state.minimumBreakEndsAt = nil
+        state.breakPlanReason = nil
+        state.calendarMeetingStartsAt = nil
+        state.calendarMeetingEndsAt = nil
+        state.liveCallStartedAt = nil
+        state.liveCallBundleIdentifier = nil
+        state.liveCallConfidence = nil
+        state.manualMeetingStartedAt = nil
+        state.awayPreviousFocusStartedAt = nil
+        state.awayReturnDetectedAt = nil
+        state.travelChain = chain
+        state.lastTransitionReason = .travelStarted
+        state.revision &+= 1
     }
 }

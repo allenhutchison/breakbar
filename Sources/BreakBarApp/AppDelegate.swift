@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private let compactStatusItemWidth: CGFloat = 62
     private let longTimerStatusItemWidth: CGFloat = 70
     private let expandedStatusItemWidth: CGFloat = 86
+    private let travelWarningStatusItemWidth: CGFloat = 104
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private var modelObservation: AnyCancellable?
@@ -126,7 +127,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         guard let statusItem, let button = statusItem.button else { return }
         let presentation = model.presentation
         let itemWidth: CGFloat
-        if presentation.timer == nil && presentation.statusLabel == "BreakBar" {
+        if presentation.statusLabel == "Leave " {
+            itemWidth = travelWarningStatusItemWidth
+        } else if presentation.timer == nil && presentation.statusLabel == "BreakBar" {
             itemWidth = expandedStatusItemWidth
         } else if presentation.shortLabel.count > 5 {
             itemWidth = longTimerStatusItemWidth

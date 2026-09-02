@@ -168,7 +168,14 @@ final class CalendarMonitor: NSObject, ObservableObject {
                     id: $0.eventIdentifier
                         ?? "\($0.calendarItemIdentifier):\($0.startDate.timeIntervalSinceReferenceDate)",
                     startAt: $0.startDate,
-                    endAt: $0.endDate
+                    endAt: $0.endDate,
+                    kind: BreakCalendarClassifier.classify(
+                        title: $0.title ?? "",
+                        location: $0.structuredLocation?.title ?? $0.location,
+                        notes: $0.notes,
+                        url: $0.url,
+                        calendarTitle: $0.calendar.title
+                    )
                 )
             }
     }

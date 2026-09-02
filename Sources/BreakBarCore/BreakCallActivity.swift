@@ -81,7 +81,8 @@ public enum BreakCallCorrelation {
         }
 
         let isNearCalendarMeeting = constraints.contains { meeting in
-            date >= meeting.startAt.addingTimeInterval(-tolerance)
+            meeting.kind == .meeting
+                && date >= meeting.startAt.addingTimeInterval(-tolerance)
                 && date < meeting.endAt.addingTimeInterval(tolerance)
         }
         return isNearCalendarMeeting ? rawSignal : nil

@@ -31,6 +31,8 @@ public struct SessionRepositoryStats: Equatable, Sendable {
     public let breakIntervals: Int
     public let lunchIntervals: Int
     public let awayIntervals: Int
+    public let travelIntervals: Int
+    public let meetingIntervals: Int
 
     public init(
         totalSessions: Int,
@@ -40,7 +42,9 @@ public struct SessionRepositoryStats: Equatable, Sendable {
         focusIntervals: Int,
         breakIntervals: Int,
         lunchIntervals: Int = 0,
-        awayIntervals: Int = 0
+        awayIntervals: Int = 0,
+        travelIntervals: Int = 0,
+        meetingIntervals: Int = 0
     ) {
         self.totalSessions = totalSessions
         self.openSessions = openSessions
@@ -50,11 +54,13 @@ public struct SessionRepositoryStats: Equatable, Sendable {
         self.breakIntervals = breakIntervals
         self.lunchIntervals = lunchIntervals
         self.awayIntervals = awayIntervals
+        self.travelIntervals = travelIntervals
+        self.meetingIntervals = meetingIntervals
     }
 }
 
 public final class SessionRepository {
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
 
     private var database: OpaquePointer?
     private let encoder = JSONEncoder()
@@ -241,10 +247,47 @@ public final class SessionRepository {
                     )
                 }
 
+            case (.focusing, .traveling),
+                 (.onBreak, .traveling),
+                 (.onLunch, .traveling),
+                 (.awayUnclassified, .traveling):
+                let sessionID = try openSessionID()
+                try closeOpenInterval(at: date)
+                try insertInterval(
+                    sessionID: sessionID,
+                    phase: .traveling,
+                    startedAt: date,
+                    minimumSatisfiedAt: nil
+                )
+
+            case (.traveling, .offsiteMeeting),
+                 (.offsiteMeeting, .traveling):
+                let sessionID = try openSessionID()
+                try closeOpenInterval(at: date)
+                try insertInterval(
+                    sessionID: sessionID,
+                    phase: next.phase,
+                    startedAt: date,
+                    minimumSatisfiedAt: nil
+                )
+
+            case (.traveling, .focusing),
+                 (.offsiteMeeting, .focusing):
+                let sessionID = try openSessionID()
+                try closeOpenInterval(at: date)
+                try insertInterval(
+                    sessionID: sessionID,
+                    phase: .focusing,
+                    startedAt: date,
+                    minimumSatisfiedAt: nil
+                )
+
             case (.focusing, .clockedOut),
                  (.onBreak, .clockedOut),
                  (.onLunch, .clockedOut),
-                 (.awayUnclassified, .clockedOut):
+                 (.awayUnclassified, .clockedOut),
+                 (.traveling, .clockedOut),
+                 (.offsiteMeeting, .clockedOut):
                 _ = try openSessionID()
                 try closeOpenInterval(at: date)
                 try closeOpenSession(at: date)
@@ -253,6 +296,8 @@ public final class SessionRepository {
                  (.onBreak, .onBreak),
                  (.onLunch, .onLunch),
                  (.awayUnclassified, .awayUnclassified),
+                 (.traveling, .traveling),
+                 (.offsiteMeeting, .offsiteMeeting),
                  (.clockedOut, .clockedOut):
                 break
 
@@ -276,7 +321,9 @@ public final class SessionRepository {
             focusIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'focus'"),
             breakIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'break'"),
             lunchIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'lunch'"),
-            awayIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'away'")
+            awayIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'away'"),
+            travelIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'travel'"),
+            meetingIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'meeting'")
         )
     }
 
@@ -304,7 +351,7 @@ public final class SessionRepository {
                 CREATE TABLE intervals (
                     id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
-                    kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch', 'away')),
+                    kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch', 'away', 'travel', 'meeting')),
                     started_at_utc REAL NOT NULL,
                     ended_at_utc REAL,
                     source TEXT NOT NULL,
@@ -323,7 +370,7 @@ public final class SessionRepository {
                     updated_at_utc REAL NOT NULL
                 );
 
-                PRAGMA user_version = 3;
+                PRAGMA user_version = 4;
                 """
                 )
             }
@@ -399,6 +446,42 @@ public final class SessionRepository {
                     """
                 )
             }
+            version = 3
+        }
+
+        if version == 3 {
+            try transaction {
+                try execute(
+                    """
+                    CREATE TABLE intervals_v4 (
+                        id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch', 'away', 'travel', 'meeting')),
+                        started_at_utc REAL NOT NULL,
+                        ended_at_utc REAL,
+                        source TEXT NOT NULL,
+                        minimum_satisfied_at_utc REAL,
+                        created_at_utc REAL NOT NULL,
+                        CHECK (ended_at_utc IS NULL OR ended_at_utc >= started_at_utc)
+                    );
+
+                    INSERT INTO intervals_v4
+                        (id, session_id, kind, started_at_utc, ended_at_utc, source,
+                         minimum_satisfied_at_utc, created_at_utc)
+                    SELECT id, session_id, kind, started_at_utc, ended_at_utc, source,
+                           minimum_satisfied_at_utc, created_at_utc
+                    FROM intervals;
+
+                    DROP TABLE intervals;
+                    ALTER TABLE intervals_v4 RENAME TO intervals;
+
+                    CREATE UNIQUE INDEX one_open_interval
+                    ON intervals((1)) WHERE ended_at_utc IS NULL;
+
+                    PRAGMA user_version = 4;
+                    """
+                )
+            }
         }
     }
 
@@ -425,6 +508,8 @@ public final class SessionRepository {
         case .onBreak: kind = "break"
         case .onLunch: kind = "lunch"
         case .awayUnclassified: kind = "away"
+        case .traveling: kind = "travel"
+        case .offsiteMeeting: kind = "meeting"
         case .clockedOut:
             throw SessionRepositoryError.unsupportedTransition(from: phase, to: phase)
         }

@@ -272,6 +272,8 @@ struct BreakPalette {
             accent = Color(red: 0.90, green: 0.45, blue: 0.16)
         case .away:
             accent = Color(red: 0.42, green: 0.44, blue: 0.50)
+        case .travel:
+            accent = Color(red: 0.94, green: 0.48, blue: 0.12)
         }
         track = accent.opacity(0.16)
     }
