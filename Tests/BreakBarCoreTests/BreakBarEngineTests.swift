@@ -315,6 +315,110 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertNil(engine.state.liveCallConfidence)
     }
 
+    func testLunchSuspendsBreakEnforcementAndClearsDeadlines() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(50))
+        XCTAssertEqual(engine.state.enforcement, .warning)
+
+        let lunchStartedAt = origin.addingTimeInterval(51)
+        XCTAssertEqual(engine.handle(.startLunch, at: lunchStartedAt), .changed)
+        XCTAssertEqual(engine.state.phase, .onLunch)
+        XCTAssertEqual(engine.state.phaseStartedAt, lunchStartedAt)
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertNil(engine.state.nominalFocusDueAt)
+        XCTAssertNil(engine.state.focusDueAt)
+        XCTAssertNil(engine.state.minimumBreakEndsAt)
+        XCTAssertEqual(engine.state.lastTransitionReason, .startLunch)
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(500)),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+    }
+
+    func testEndingLunchStartsFreshFocusCycle() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.startLunch, at: origin.addingTimeInterval(30))
+        let lunchEndedAt = origin.addingTimeInterval(120)
+
+        XCTAssertEqual(engine.handle(.endLunch, at: lunchEndedAt), .changed)
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.phaseStartedAt, lunchEndedAt)
+        XCTAssertEqual(engine.state.focusDueAt, lunchEndedAt.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.breakPlanReason, .nominal)
+        XCTAssertEqual(engine.state.lastTransitionReason, .endLunch)
+    }
+
+    func testLunchCanClockOutButCannotUseBreakReturnCommand() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.startLunch, at: origin.addingTimeInterval(20))
+
+        XCTAssertEqual(
+            engine.handle(.returnToFocus, at: origin.addingTimeInterval(30)),
+            .unchanged
+        )
+        XCTAssertEqual(
+            engine.handle(.clockOut, at: origin.addingTimeInterval(40)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .clockedOut)
+    }
+
+    func testManualMeetingSuppressesEnforcementAndEndsWithFreshWarningWhenOverdue() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(50))
+        XCTAssertEqual(engine.state.enforcement, .warning)
+
+        let meetingStartedAt = origin.addingTimeInterval(51)
+        XCTAssertEqual(
+            engine.handle(.startManualMeeting, at: meetingStartedAt),
+            .changed
+        )
+        XCTAssertEqual(engine.state.manualMeetingStartedAt, meetingStartedAt)
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(60))
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(100)),
+            .unchanged
+        )
+
+        let meetingEndedAt = origin.addingTimeInterval(100)
+        XCTAssertEqual(
+            engine.handle(.endManualMeeting, at: meetingEndedAt),
+            .changed
+        )
+        XCTAssertNil(engine.state.manualMeetingStartedAt)
+        XCTAssertEqual(
+            engine.state.focusDueAt,
+            meetingEndedAt.addingTimeInterval(policy.warningDuration)
+        )
+        XCTAssertEqual(engine.state.breakPlanReason, .postMeetingWarning)
+        XCTAssertEqual(engine.state.lastTransitionReason, .endManualMeeting)
+
+        XCTAssertEqual(engine.handle(.tick, at: meetingEndedAt), .changed)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+    }
+
+    func testManualMeetingEndingBeforeDeadlineResumesOriginalFocusCycle() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.startManualMeeting, at: origin.addingTimeInterval(10))
+
+        XCTAssertEqual(
+            engine.handle(.endManualMeeting, at: origin.addingTimeInterval(30)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.breakPlanReason, .nominal)
+        XCTAssertEqual(engine.state.enforcement, .none)
+    }
+
     func testEmergencyActionsRecordDistinctReasons() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)

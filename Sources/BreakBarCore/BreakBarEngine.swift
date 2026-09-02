@@ -46,6 +46,30 @@ public struct BreakBarEngine: Sendable {
             beginFocus(at: now, reason: .returnToFocus)
             return .changed
 
+        case .startLunch:
+            guard state.phase == .focusing else { return .unchanged }
+            beginLunch(at: now)
+            return .changed
+
+        case .endLunch:
+            guard state.phase == .onLunch else { return .unchanged }
+            beginFocus(at: now, reason: .endLunch)
+            return .changed
+
+        case .startManualMeeting:
+            guard state.phase == .focusing, state.manualMeetingStartedAt == nil else {
+                return .unchanged
+            }
+            beginManualMeeting(at: now)
+            return .changed
+
+        case .endManualMeeting:
+            guard state.phase == .focusing, state.manualMeetingStartedAt != nil else {
+                return .unchanged
+            }
+            endManualMeeting(at: now)
+            return .changed
+
         case .tick, .reconcile:
             return updateEnforcement(
                 at: now,
@@ -77,9 +101,57 @@ public struct BreakBarEngine: Sendable {
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
+        state.manualMeetingStartedAt = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
         return .changed
+    }
+
+    private mutating func beginLunch(at now: Date) {
+        state.phase = .onLunch
+        state.enforcement = .none
+        state.phaseStartedAt = now
+        state.nominalFocusDueAt = nil
+        state.focusDueAt = nil
+        state.minimumBreakEndsAt = nil
+        state.breakPlanReason = nil
+        state.calendarMeetingStartsAt = nil
+        state.calendarMeetingEndsAt = nil
+        state.liveCallStartedAt = nil
+        state.liveCallBundleIdentifier = nil
+        state.liveCallConfidence = nil
+        state.manualMeetingStartedAt = nil
+        state.lastTransitionReason = .startLunch
+        state.revision &+= 1
+    }
+
+    private mutating func beginManualMeeting(at now: Date) {
+        state.enforcement = .none
+        state.calendarMeetingStartsAt = nil
+        state.calendarMeetingEndsAt = nil
+        state.liveCallStartedAt = nil
+        state.liveCallBundleIdentifier = nil
+        state.liveCallConfidence = nil
+        state.manualMeetingStartedAt = now
+        state.lastTransitionReason = .startManualMeeting
+        state.revision &+= 1
+    }
+
+    private mutating func endManualMeeting(at now: Date) {
+        state.manualMeetingStartedAt = nil
+        state.enforcement = .none
+        let nominalDueAt = state.nominalFocusDueAt
+            ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
+            ?? now
+        if now >= nominalDueAt {
+            state.focusDueAt = now.addingTimeInterval(policy.warningDuration)
+            state.breakPlanReason = .postMeetingWarning
+        } else {
+            state.focusDueAt = nominalDueAt
+            state.breakPlanReason = .nominal
+        }
+        state.lastTransitionReason = .endManualMeeting
+        state.revision &+= 1
     }
 
     private mutating func updateEnforcement(
@@ -88,6 +160,13 @@ public struct BreakBarEngine: Sendable {
     ) -> BreakCommandResult {
         guard state.phase == .focusing, let dueAt = state.focusDueAt else {
             return .unchanged
+        }
+        if state.manualMeetingStartedAt != nil {
+            guard state.enforcement != .none else { return .unchanged }
+            state.enforcement = .none
+            state.lastTransitionReason = .startManualMeeting
+            state.revision &+= 1
+            return .changed
         }
         if state.liveCallStartedAt != nil {
             guard state.enforcement != .none else { return .unchanged }
@@ -139,6 +218,7 @@ public struct BreakBarEngine: Sendable {
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
+        state.manualMeetingStartedAt = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
     }
@@ -150,6 +230,7 @@ public struct BreakBarEngine: Sendable {
         guard state.phase == .focusing, let cycleStartedAt = state.phaseStartedAt else {
             return .unchanged
         }
+        guard state.manualMeetingStartedAt == nil else { return .unchanged }
         if let result = reconcileEndedMeeting(at: now) {
             return result
         }
@@ -258,6 +339,7 @@ public struct BreakBarEngine: Sendable {
         at now: Date
     ) -> BreakCommandResult {
         guard state.phase == .focusing else { return .unchanged }
+        guard state.manualMeetingStartedAt == nil else { return .unchanged }
 
         if let signal {
             if state.liveCallStartedAt != nil,

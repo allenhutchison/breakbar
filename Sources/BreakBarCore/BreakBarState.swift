@@ -4,6 +4,7 @@ public enum BreakBarPhase: String, Codable, Equatable, Sendable {
     case clockedOut
     case focusing
     case onBreak
+    case onLunch
 }
 
 public enum BreakEnforcement: String, Codable, Equatable, Sendable {
@@ -26,6 +27,10 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case scheduledMeetingEnded
     case liveCallStarted
     case liveCallEnded
+    case startLunch
+    case endLunch
+    case startManualMeeting
+    case endManualMeeting
 }
 
 public enum BreakPlanReason: String, Codable, Equatable, Sendable {
@@ -48,6 +53,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var liveCallStartedAt: Date?
     public var liveCallBundleIdentifier: String?
     public var liveCallConfidence: BreakCallConfidence?
+    public var manualMeetingStartedAt: Date?
     public var lastTransitionReason: BreakTransitionReason?
     public var revision: UInt64
 
@@ -64,6 +70,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         liveCallStartedAt: Date? = nil,
         liveCallBundleIdentifier: String? = nil,
         liveCallConfidence: BreakCallConfidence? = nil,
+        manualMeetingStartedAt: Date? = nil,
         lastTransitionReason: BreakTransitionReason? = nil,
         revision: UInt64 = 0
     ) {
@@ -79,6 +86,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.liveCallStartedAt = liveCallStartedAt
         self.liveCallBundleIdentifier = liveCallBundleIdentifier
         self.liveCallConfidence = liveCallConfidence
+        self.manualMeetingStartedAt = manualMeetingStartedAt
         self.lastTransitionReason = lastTransitionReason
         self.revision = revision
     }
@@ -89,6 +97,10 @@ public enum BreakCommand: Equatable, Sendable {
     case clockOut
     case startBreak
     case returnToFocus
+    case startLunch
+    case endLunch
+    case startManualMeeting
+    case endManualMeeting
     case tick
     case reconcile
     case emergencyStartBreak

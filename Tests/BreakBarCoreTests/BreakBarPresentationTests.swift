@@ -171,6 +171,49 @@ final class BreakBarPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.tone, .meeting)
     }
 
+    func testLunchCountsUpWithoutMinimumReturnDeadline() {
+        let state = BreakBarState(
+            phase: .onLunch,
+            phaseStartedAt: origin,
+            lastTransitionReason: .startLunch,
+            revision: 3
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(32 * 60 + 9)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "+32:09")
+        XCTAssertEqual(presentation.title, "Lunch")
+        XCTAssertEqual(presentation.tone, .lunch)
+        XCTAssertEqual(presentation.primaryActionTitle, "End lunch")
+    }
+
+    func testManualMeetingCountsUpAndOffersExplicitEndAction() {
+        let state = BreakBarState(
+            phase: .focusing,
+            phaseStartedAt: origin,
+            nominalFocusDueAt: origin.addingTimeInterval(60),
+            focusDueAt: origin.addingTimeInterval(60),
+            manualMeetingStartedAt: origin.addingTimeInterval(10),
+            lastTransitionReason: .startManualMeeting,
+            revision: 3
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(42)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "+0:32")
+        XCTAssertEqual(presentation.title, "In a meeting")
+        XCTAssertEqual(presentation.tone, .meeting)
+        XCTAssertEqual(presentation.primaryActionTitle, "End meeting")
+    }
+
     func testTimerFormattingIsSharedAcrossStates() {
         XCTAssertEqual(
             BreakBarTimerPresentation(direction: .countDown, interval: 65).text,

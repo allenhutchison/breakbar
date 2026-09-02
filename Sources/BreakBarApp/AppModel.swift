@@ -108,6 +108,7 @@ final class AppModel: ObservableObject {
         case .warning: "exclamationmark.circle.fill"
         case .required: "figure.walk.motion"
         case .breakTime: "cup.and.heat.waves.fill"
+        case .lunch: "fork.knife"
         }
     }
 
@@ -121,9 +122,15 @@ final class AppModel: ObservableObject {
         case .clockedOut:
             clockIn()
         case .focusing:
-            startBreak()
+            if state.manualMeetingStartedAt != nil {
+                endManualMeeting()
+            } else {
+                startBreak()
+            }
         case .onBreak:
             returnToFocus()
+        case .onLunch:
+            endLunch()
         }
     }
 
@@ -145,6 +152,31 @@ final class AppModel: ObservableObject {
 
     func startBreak() {
         beginBreak(with: .startBreak)
+    }
+
+    func startLunch() {
+        apply(.startLunch)
+    }
+
+    func endLunch() {
+        let eventDate = Date()
+        if apply(.endLunch, at: eventDate) == .changed {
+            applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
+        }
+    }
+
+    func startManualMeeting() {
+        apply(.startManualMeeting)
+    }
+
+    func endManualMeeting() {
+        let eventDate = Date()
+        if apply(.endManualMeeting, at: eventDate) == .changed {
+            applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
+            _ = apply(.tick, at: eventDate)
+        }
     }
 
     func emergencyStartBreak() {

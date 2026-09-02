@@ -29,10 +29,29 @@ public struct SessionRepositoryStats: Equatable, Sendable {
     public let openIntervals: Int
     public let focusIntervals: Int
     public let breakIntervals: Int
+    public let lunchIntervals: Int
+
+    public init(
+        totalSessions: Int,
+        openSessions: Int,
+        totalIntervals: Int,
+        openIntervals: Int,
+        focusIntervals: Int,
+        breakIntervals: Int,
+        lunchIntervals: Int = 0
+    ) {
+        self.totalSessions = totalSessions
+        self.openSessions = openSessions
+        self.totalIntervals = totalIntervals
+        self.openIntervals = openIntervals
+        self.focusIntervals = focusIntervals
+        self.breakIntervals = breakIntervals
+        self.lunchIntervals = lunchIntervals
+    }
 }
 
 public final class SessionRepository {
-    public static let schemaVersion = 1
+    public static let schemaVersion = 2
 
     private var database: OpaquePointer?
     private let encoder = JSONEncoder()
@@ -149,12 +168,35 @@ public final class SessionRepository {
                     minimumSatisfiedAt: nil
                 )
 
-            case (.focusing, .clockedOut), (.onBreak, .clockedOut):
+            case (.focusing, .onLunch):
+                let sessionID = try openSessionID()
+                try closeOpenInterval(at: date)
+                try insertInterval(
+                    sessionID: sessionID,
+                    phase: .onLunch,
+                    startedAt: date,
+                    minimumSatisfiedAt: nil
+                )
+
+            case (.onLunch, .focusing):
+                let sessionID = try openSessionID()
+                try closeOpenInterval(at: date)
+                try insertInterval(
+                    sessionID: sessionID,
+                    phase: .focusing,
+                    startedAt: date,
+                    minimumSatisfiedAt: nil
+                )
+
+            case (.focusing, .clockedOut), (.onBreak, .clockedOut), (.onLunch, .clockedOut):
                 _ = try openSessionID()
                 try closeOpenInterval(at: date)
                 try closeOpenSession(at: date)
 
-            case (.focusing, .focusing), (.onBreak, .onBreak), (.clockedOut, .clockedOut):
+            case (.focusing, .focusing),
+                 (.onBreak, .onBreak),
+                 (.onLunch, .onLunch),
+                 (.clockedOut, .clockedOut):
                 break
 
             default:
@@ -175,7 +217,8 @@ public final class SessionRepository {
             totalIntervals: try count("SELECT COUNT(*) FROM intervals"),
             openIntervals: try count("SELECT COUNT(*) FROM intervals WHERE ended_at_utc IS NULL"),
             focusIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'focus'"),
-            breakIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'break'")
+            breakIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'break'"),
+            lunchIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'lunch'")
         )
     }
 
@@ -186,11 +229,10 @@ public final class SessionRepository {
                 "Database schema \(version) is newer than this app supports."
             )
         }
-        guard version == 0 else { return }
-
-        try transaction {
-            try execute(
-                """
+        if version == 0 {
+            try transaction {
+                try execute(
+                    """
                 CREATE TABLE work_sessions (
                     id TEXT PRIMARY KEY,
                     started_at_utc REAL NOT NULL,
@@ -204,7 +246,7 @@ public final class SessionRepository {
                 CREATE TABLE intervals (
                     id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
-                    kind TEXT NOT NULL CHECK (kind IN ('focus', 'break')),
+                    kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch')),
                     started_at_utc REAL NOT NULL,
                     ended_at_utc REAL,
                     source TEXT NOT NULL,
@@ -223,9 +265,46 @@ public final class SessionRepository {
                     updated_at_utc REAL NOT NULL
                 );
 
-                PRAGMA user_version = 1;
+                PRAGMA user_version = 2;
                 """
-            )
+                )
+            }
+            return
+        }
+
+        if version == 1 {
+            try transaction {
+                try execute(
+                    """
+                    CREATE TABLE intervals_v2 (
+                        id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch')),
+                        started_at_utc REAL NOT NULL,
+                        ended_at_utc REAL,
+                        source TEXT NOT NULL,
+                        minimum_satisfied_at_utc REAL,
+                        created_at_utc REAL NOT NULL,
+                        CHECK (ended_at_utc IS NULL OR ended_at_utc >= started_at_utc)
+                    );
+
+                    INSERT INTO intervals_v2
+                        (id, session_id, kind, started_at_utc, ended_at_utc, source,
+                         minimum_satisfied_at_utc, created_at_utc)
+                    SELECT id, session_id, kind, started_at_utc, ended_at_utc, source,
+                           minimum_satisfied_at_utc, created_at_utc
+                    FROM intervals;
+
+                    DROP TABLE intervals;
+                    ALTER TABLE intervals_v2 RENAME TO intervals;
+
+                    CREATE UNIQUE INDEX one_open_interval
+                    ON intervals((1)) WHERE ended_at_utc IS NULL;
+
+                    PRAGMA user_version = 2;
+                    """
+                )
+            }
         }
     }
 
@@ -250,6 +329,7 @@ public final class SessionRepository {
         switch phase {
         case .focusing: kind = "focus"
         case .onBreak: kind = "break"
+        case .onLunch: kind = "lunch"
         case .clockedOut:
             throw SessionRepositoryError.unsupportedTransition(from: phase, to: phase)
         }

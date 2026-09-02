@@ -65,10 +65,36 @@ struct BreakBarMenuView: View {
                     .controlSize(.large)
                 }
 
+                if model.state.phase == .focusing,
+                   model.state.manualMeetingStartedAt == nil
+                {
+                    Button(action: model.startLunch) {
+                        Text("Take lunch")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(BreakPalette(tone: .lunch).accent)
+                    .controlSize(.large)
+
+                    if model.presentation.tone != .meeting {
+                        Button(action: model.startManualMeeting) {
+                            Text("In a meeting")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(BreakPalette(tone: .meeting).accent)
+                        .controlSize(.large)
+                    }
+                }
+
                 if model.state.phase != .clockedOut {
-                    Button("Clock out", action: model.clockOut)
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.secondary)
+                    Button(action: model.clockOut) {
+                        Text("Clock out")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(BreakPalette(tone: .neutral).accent)
+                    .controlSize(.large)
                 }
             }
             .padding(20)
@@ -202,6 +228,8 @@ struct BreakPalette {
             accent = Color(red: 0.91, green: 0.20, blue: 0.23)
         case .breakTime:
             accent = Color(red: 0.12, green: 0.64, blue: 0.48)
+        case .lunch:
+            accent = Color(red: 0.90, green: 0.45, blue: 0.16)
         }
         track = accent.opacity(0.16)
     }

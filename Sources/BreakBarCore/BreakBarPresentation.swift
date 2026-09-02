@@ -28,6 +28,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
         case warning
         case required
         case breakTime
+        case lunch
     }
 
     public var statusLabel: String
@@ -54,6 +55,20 @@ public struct BreakBarPresentation: Equatable, Sendable {
             primaryActionTitle = "Clock in"
 
         case .focusing:
+            if let manualMeetingStartedAt = state.manualMeetingStartedAt {
+                statusLabel = ""
+                timer = BreakBarTimerPresentation(
+                    direction: .countUp,
+                    interval: now.timeIntervalSince(manualMeetingStartedAt)
+                )
+                title = "In a meeting"
+                detail = "Break enforcement is paused until you end this meeting."
+                progress = 1
+                tone = .meeting
+                primaryActionTitle = "End meeting"
+                return
+            }
+
             if let liveCallStartedAt = state.liveCallStartedAt {
                 let timer: BreakBarTimerPresentation
                 let title: String
@@ -158,6 +173,16 @@ public struct BreakBarPresentation: Equatable, Sendable {
             progress = minimumSatisfied ? 1 : min(1, max(0, 1 - remaining / policy.minimumBreakDuration))
             tone = .breakTime
             primaryActionTitle = minimumSatisfied ? "Return to focus" : nil
+
+        case .onLunch:
+            let elapsed = max(0, now.timeIntervalSince(state.phaseStartedAt ?? now))
+            statusLabel = ""
+            timer = BreakBarTimerPresentation(direction: .countUp, interval: elapsed)
+            title = "Lunch"
+            detail = "Break enforcement is paused. End lunch to begin a fresh focus cycle."
+            progress = 1
+            tone = .lunch
+            primaryActionTitle = "End lunch"
         }
     }
 
