@@ -1,4 +1,5 @@
 import BreakBarCore
+import Foundation
 import SwiftUI
 
 struct SettingsView: View {
@@ -8,10 +9,52 @@ struct SettingsView: View {
         Form {
             Section("General") {
                 LabeledContent("Timer source", value: "This Mac")
-                LabeledContent("Focus interval", value: duration(model.policy.focusDuration))
-                LabeledContent("Warning", value: duration(model.policy.warningDuration))
-                LabeledContent("Minimum break", value: duration(model.policy.minimumBreakDuration))
-                LabeledContent("Idle-away threshold", value: duration(model.policy.idleThreshold))
+
+                if model.isDemoMode {
+                    LabeledContent("Timing", value: "Accelerated demo")
+                    Text("Timing controls are unavailable in demo mode so its seconds-long cycle remains intact.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    MinuteInputRow(
+                        title: "Focus interval",
+                        minutes: Int(model.policy.focusDuration / 60),
+                        range: 15 ... 99,
+                        step: 5
+                    ) { minutes in
+                        model.setFocusDuration(TimeInterval(minutes * 60))
+                    }
+
+                    MinuteInputRow(
+                        title: "Warning",
+                        minutes: Int(model.policy.warningDuration / 60),
+                        range: 1 ... min(15, Int(model.policy.focusDuration / 60)),
+                        step: 1
+                    ) { minutes in
+                        model.setWarningDuration(TimeInterval(minutes * 60))
+                    }
+
+                    MinuteInputRow(
+                        title: "Minimum break",
+                        minutes: Int(model.policy.minimumBreakDuration / 60),
+                        range: 1 ... 30,
+                        step: 1
+                    ) { minutes in
+                        model.setMinimumBreakDuration(TimeInterval(minutes * 60))
+                    }
+
+                    MinuteInputRow(
+                        title: "Idle-away threshold",
+                        minutes: Int(model.policy.idleThreshold / 60),
+                        range: 1 ... 60,
+                        step: 1
+                    ) { minutes in
+                        model.setIdleThreshold(TimeInterval(minutes * 60))
+                    }
+
+                    Button("Restore timing defaults", action: model.resetTimingPreferences)
+                        .disabled(model.policy == .standard)
+                }
 
                 Toggle(
                     "Launch BreakBar at login",
@@ -49,10 +92,114 @@ struct SettingsView: View {
         .padding()
         .frame(width: 520, height: 680)
     }
+}
 
-    private func duration(_ seconds: TimeInterval) -> String {
-        if seconds < 60 { return "\(Int(seconds)) seconds" }
-        return "\(Int(seconds / 60)) minutes"
+private struct MinuteInputRow: View {
+    let title: String
+    let minutes: Int
+    let range: ClosedRange<Int>
+    let step: Int
+    let onChange: (Int) -> Void
+
+    @State private var text: String
+    @FocusState private var isFocused: Bool
+
+    init(
+        title: String,
+        minutes: Int,
+        range: ClosedRange<Int>,
+        step: Int,
+        onChange: @escaping (Int) -> Void
+    ) {
+        self.title = title
+        self.minutes = minutes
+        self.range = range
+        self.step = step
+        self.onChange = onChange
+        _text = State(initialValue: Self.format(minutes))
+    }
+
+    var body: some View {
+        LabeledContent(title) {
+            HStack(spacing: 5) {
+                TextField("", text: $text)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 38)
+                    .focused($isFocused)
+                    .onSubmit(commit)
+                    .onChange(of: text) { _, newValue in
+                        filterInput(newValue)
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(isInvalid ? Color.red : .clear, lineWidth: 1)
+                    }
+                    .accessibilityLabel(title)
+                    .accessibilityHint("Enter a value from \(range.lowerBound) to \(range.upperBound) minutes.")
+
+                Stepper("", value: stepperValue, in: range, step: step)
+                    .labelsHidden()
+                    .fixedSize()
+                    .accessibilityLabel("Adjust \(title.lowercased())")
+
+                Text("min")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .onChange(of: minutes) { _, newValue in
+            if !isFocused {
+                text = Self.format(newValue)
+            }
+        }
+        .onChange(of: isFocused) { _, focused in
+            if !focused {
+                commit()
+            }
+        }
+    }
+
+    private var stepperValue: Binding<Int> {
+        Binding(
+            get: { minutes },
+            set: { newValue in
+                let validated = min(range.upperBound, max(range.lowerBound, newValue))
+                text = Self.format(validated)
+                onChange(validated)
+            }
+        )
+    }
+
+    private var isInvalid: Bool {
+        guard let value = Int(text) else { return !text.isEmpty }
+        return !range.contains(value)
+    }
+
+    private func filterInput(_ newValue: String) {
+        let filtered = String(newValue.filter(\.isNumber).prefix(2))
+        if filtered != newValue {
+            text = filtered
+            return
+        }
+
+        guard let value = Int(filtered), range.contains(value) else { return }
+        onChange(value)
+    }
+
+    private func commit() {
+        guard let value = Int(text) else {
+            text = Self.format(minutes)
+            return
+        }
+
+        let validated = min(range.upperBound, max(range.lowerBound, value))
+        text = Self.format(validated)
+        onChange(validated)
+    }
+
+    private static func format(_ value: Int) -> String {
+        String(format: "%02d", value)
     }
 }
 

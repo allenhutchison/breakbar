@@ -14,8 +14,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var launchAtLoginMessage: String?
     @Published private(set) var acceptedCallSignal: BreakCallSignal?
     @Published private(set) var allowUncorrelatedBrowserCalls: Bool
+    @Published private(set) var policy: BreakPolicy
 
-    let policy: BreakPolicy
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
     let callActivityMonitor = CallActivityMonitor()
@@ -30,14 +30,10 @@ final class AppModel: ObservableObject {
 
     init() {
         isDemoMode = CommandLine.arguments.contains("--demo")
-        policy = isDemoMode
-            ? BreakPolicy(
-                focusDuration: 60,
-                warningDuration: 15,
-                minimumBreakDuration: 20,
-                idleThreshold: 10
-            )
-            : .standard
+        let initialPolicy = isDemoMode
+            ? Self.demoPolicy
+            : Self.loadPolicyPreferences()
+        policy = initialPolicy
 
         var restored = BreakBarState()
         var loadedRepository: SessionRepository?
@@ -57,7 +53,7 @@ final class AppModel: ObservableObject {
         }
 
         repository = loadedRepository
-        engine = BreakBarEngine(state: restored, policy: policy)
+        engine = BreakBarEngine(state: restored, policy: initialPolicy)
         state = engine.state
         now = Date()
         lastMessage = startupMessage
@@ -248,6 +244,68 @@ final class AppModel: ObservableObject {
         SMAppService.openSystemSettingsLoginItems()
     }
 
+    func setFocusDuration(_ duration: TimeInterval) {
+        let validatedDuration = min(99 * 60, max(15 * 60, duration))
+        replacePolicy(
+            BreakPolicy(
+                focusDuration: validatedDuration,
+                warningDuration: min(policy.warningDuration, validatedDuration),
+                minimumBreakDuration: policy.minimumBreakDuration,
+                maximumSeatedDuration: max(
+                    BreakPolicy.standard.maximumSeatedDuration,
+                    validatedDuration
+                ),
+                idleThreshold: policy.idleThreshold
+            )
+        )
+    }
+
+    func setWarningDuration(_ duration: TimeInterval) {
+        let validatedDuration = min(
+            min(15 * 60, policy.focusDuration),
+            max(60, duration)
+        )
+        replacePolicy(
+            BreakPolicy(
+                focusDuration: policy.focusDuration,
+                warningDuration: validatedDuration,
+                minimumBreakDuration: policy.minimumBreakDuration,
+                maximumSeatedDuration: policy.maximumSeatedDuration,
+                idleThreshold: policy.idleThreshold
+            )
+        )
+    }
+
+    func setMinimumBreakDuration(_ duration: TimeInterval) {
+        let validatedDuration = min(30 * 60, max(60, duration))
+        replacePolicy(
+            BreakPolicy(
+                focusDuration: policy.focusDuration,
+                warningDuration: policy.warningDuration,
+                minimumBreakDuration: validatedDuration,
+                maximumSeatedDuration: policy.maximumSeatedDuration,
+                idleThreshold: policy.idleThreshold
+            )
+        )
+    }
+
+    func setIdleThreshold(_ duration: TimeInterval) {
+        let validatedDuration = min(60 * 60, max(60, duration))
+        replacePolicy(
+            BreakPolicy(
+                focusDuration: policy.focusDuration,
+                warningDuration: policy.warningDuration,
+                minimumBreakDuration: policy.minimumBreakDuration,
+                maximumSeatedDuration: policy.maximumSeatedDuration,
+                idleThreshold: validatedDuration
+            )
+        )
+    }
+
+    func resetTimingPreferences() {
+        replacePolicy(isDemoMode ? Self.demoPolicy : .standard)
+    }
+
     func reconcileAfterLifecycleEvent() {
         let eventDate = Date()
         applyCurrentCalendarConstraints(at: eventDate)
@@ -374,6 +432,18 @@ final class AppModel: ObservableObject {
     private static let allowUncorrelatedBrowserCallsKey =
         "call.allowUncorrelatedBrowserMicrophone"
 
+    private static let focusDurationKey = "policy.focusDuration"
+    private static let warningDurationKey = "policy.warningDuration"
+    private static let minimumBreakDurationKey = "policy.minimumBreakDuration"
+    private static let idleThresholdKey = "policy.idleThreshold"
+
+    private static let demoPolicy = BreakPolicy(
+        focusDuration: 60,
+        warningDuration: 15,
+        minimumBreakDuration: 20,
+        idleThreshold: 10
+    )
+
     private static let callApplicationNames: [String: String] = [
         "us.zoom.xos": "Zoom",
         "com.microsoft.teams2": "Microsoft Teams",
@@ -389,6 +459,79 @@ final class AppModel: ObservableObject {
         "org.mozilla.firefox": "Firefox",
         "com.brave.Browser": "Brave",
     ]
+
+    private func replacePolicy(_ nextPolicy: BreakPolicy) {
+        guard nextPolicy != policy else { return }
+        policy = nextPolicy
+        engine.policy = nextPolicy
+        if !isDemoMode {
+            Self.savePolicyPreferences(nextPolicy)
+        }
+
+        let eventDate = Date()
+        if state.phase == .focusing {
+            applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
+            _ = apply(.tick, at: eventDate)
+        } else {
+            now = eventDate
+            synchronizeWindows(at: eventDate)
+        }
+    }
+
+    private static func loadPolicyPreferences() -> BreakPolicy {
+        let defaults = UserDefaults.standard
+        let standard = BreakPolicy.standard
+        let focusDuration = storedDuration(
+            forKey: focusDurationKey,
+            fallback: standard.focusDuration,
+            range: 15 * 60 ... 99 * 60,
+            defaults: defaults
+        )
+        let warningDuration = storedDuration(
+            forKey: warningDurationKey,
+            fallback: standard.warningDuration,
+            range: 60 ... min(15 * 60, focusDuration),
+            defaults: defaults
+        )
+        let minimumBreakDuration = storedDuration(
+            forKey: minimumBreakDurationKey,
+            fallback: standard.minimumBreakDuration,
+            range: 60 ... 30 * 60,
+            defaults: defaults
+        )
+        let idleThreshold = storedDuration(
+            forKey: idleThresholdKey,
+            fallback: standard.idleThreshold,
+            range: 60 ... 60 * 60,
+            defaults: defaults
+        )
+        return BreakPolicy(
+            focusDuration: focusDuration,
+            warningDuration: warningDuration,
+            minimumBreakDuration: minimumBreakDuration,
+            maximumSeatedDuration: max(standard.maximumSeatedDuration, focusDuration),
+            idleThreshold: idleThreshold
+        )
+    }
+
+    private static func storedDuration(
+        forKey key: String,
+        fallback: TimeInterval,
+        range: ClosedRange<TimeInterval>,
+        defaults: UserDefaults
+    ) -> TimeInterval {
+        guard defaults.object(forKey: key) != nil else { return fallback }
+        return min(range.upperBound, max(range.lowerBound, defaults.double(forKey: key)))
+    }
+
+    private static func savePolicyPreferences(_ policy: BreakPolicy) {
+        let defaults = UserDefaults.standard
+        defaults.set(policy.focusDuration, forKey: focusDurationKey)
+        defaults.set(policy.warningDuration, forKey: warningDurationKey)
+        defaults.set(policy.minimumBreakDuration, forKey: minimumBreakDurationKey)
+        defaults.set(policy.idleThreshold, forKey: idleThresholdKey)
+    }
 
     @discardableResult
     private func apply(
