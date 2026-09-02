@@ -10,44 +10,51 @@ struct SettingsView: View {
             Section("General") {
                 LabeledContent("Timer source", value: "This Mac")
 
-                MinuteInputRow(
-                    title: "Focus interval",
-                    minutes: Int(model.policy.focusDuration / 60),
-                    range: 15 ... 99,
-                    step: 5
-                ) { minutes in
-                    model.setFocusDuration(TimeInterval(minutes * 60))
-                }
+                if model.isDemoMode {
+                    LabeledContent("Timing", value: "Accelerated demo")
+                    Text("Timing controls are unavailable in demo mode so its seconds-long cycle remains intact.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    MinuteInputRow(
+                        title: "Focus interval",
+                        minutes: Int(model.policy.focusDuration / 60),
+                        range: 15 ... 99,
+                        step: 5
+                    ) { minutes in
+                        model.setFocusDuration(TimeInterval(minutes * 60))
+                    }
 
-                MinuteInputRow(
-                    title: "Warning",
-                    minutes: Int(model.policy.warningDuration / 60),
-                    range: 1 ... min(15, Int(model.policy.focusDuration / 60)),
-                    step: 1
-                ) { minutes in
-                    model.setWarningDuration(TimeInterval(minutes * 60))
-                }
+                    MinuteInputRow(
+                        title: "Warning",
+                        minutes: Int(model.policy.warningDuration / 60),
+                        range: 1 ... min(15, Int(model.policy.focusDuration / 60)),
+                        step: 1
+                    ) { minutes in
+                        model.setWarningDuration(TimeInterval(minutes * 60))
+                    }
 
-                MinuteInputRow(
-                    title: "Minimum break",
-                    minutes: Int(model.policy.minimumBreakDuration / 60),
-                    range: 1 ... 30,
-                    step: 1
-                ) { minutes in
-                    model.setMinimumBreakDuration(TimeInterval(minutes * 60))
-                }
+                    MinuteInputRow(
+                        title: "Minimum break",
+                        minutes: Int(model.policy.minimumBreakDuration / 60),
+                        range: 1 ... 30,
+                        step: 1
+                    ) { minutes in
+                        model.setMinimumBreakDuration(TimeInterval(minutes * 60))
+                    }
 
-                MinuteInputRow(
-                    title: "Idle-away threshold",
-                    minutes: Int(model.policy.idleThreshold / 60),
-                    range: 1 ... 60,
-                    step: 1
-                ) { minutes in
-                    model.setIdleThreshold(TimeInterval(minutes * 60))
-                }
+                    MinuteInputRow(
+                        title: "Idle-away threshold",
+                        minutes: Int(model.policy.idleThreshold / 60),
+                        range: 1 ... 60,
+                        step: 1
+                    ) { minutes in
+                        model.setIdleThreshold(TimeInterval(minutes * 60))
+                    }
 
-                Button("Restore timing defaults", action: model.resetTimingPreferences)
-                    .disabled(model.policy == .standard)
+                    Button("Restore timing defaults", action: model.resetTimingPreferences)
+                        .disabled(model.policy == .standard)
+                }
 
                 Toggle(
                     "Launch BreakBar at login",

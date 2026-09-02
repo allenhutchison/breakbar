@@ -31,12 +31,7 @@ final class AppModel: ObservableObject {
     init() {
         isDemoMode = CommandLine.arguments.contains("--demo")
         let initialPolicy = isDemoMode
-            ? BreakPolicy(
-                focusDuration: 60,
-                warningDuration: 15,
-                minimumBreakDuration: 20,
-                idleThreshold: 10
-            )
+            ? Self.demoPolicy
             : Self.loadPolicyPreferences()
         policy = initialPolicy
 
@@ -308,7 +303,7 @@ final class AppModel: ObservableObject {
     }
 
     func resetTimingPreferences() {
-        replacePolicy(.standard)
+        replacePolicy(isDemoMode ? Self.demoPolicy : .standard)
     }
 
     func reconcileAfterLifecycleEvent() {
@@ -441,6 +436,13 @@ final class AppModel: ObservableObject {
     private static let warningDurationKey = "policy.warningDuration"
     private static let minimumBreakDurationKey = "policy.minimumBreakDuration"
     private static let idleThresholdKey = "policy.idleThreshold"
+
+    private static let demoPolicy = BreakPolicy(
+        focusDuration: 60,
+        warningDuration: 15,
+        minimumBreakDuration: 20,
+        idleThreshold: 10
+    )
 
     private static let callApplicationNames: [String: String] = [
         "us.zoom.xos": "Zoom",
