@@ -20,6 +20,8 @@ The app appears only in the menu bar, where its status item shows the live count
 
 Open **Settings** from the menu-bar menu to change the focus interval, warning duration, minimum break, and idle-away threshold. Each timing control accepts a two-digit minute value or can be adjusted with its adjacent arrows. Invalid values are clamped to the supported range, and normal-mode preferences persist across app restarts. Use **Restore timing defaults** to return to the standard 55-minute focus, 5-minute warning, 5-minute minimum break, and 10-minute idle threshold. Timing controls are unavailable in demo mode so its accelerated cycle remains unchanged.
 
+Connect and select calendars in **Settings** to let BreakBar plan around meetings and travel. An event whose title contains `Travel`, `Commute`, or `Drive` starts a travel chain; a physical event location marks an offsite meeting, and an ordinary meeting between outbound and return travel blocks is treated as offsite too. BreakBar shows a five-minute `Leave` countdown with a notification and sound, then a `TIME TO GO` overlay at departure. Break enforcement remains paused through the connected offsite chain, and BreakBar stays `AWAY` after it ends until **Return home / resume focus** starts a fresh focus cycle. Calendar titles are used for classification but are not stored in timer state or history.
+
 ## Verify
 
 ```sh

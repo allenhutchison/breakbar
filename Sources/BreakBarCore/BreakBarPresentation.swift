@@ -30,6 +30,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
         case breakTime
         case lunch
         case away
+        case travel
     }
 
     public var statusLabel: String
@@ -41,7 +42,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
     public var primaryActionTitle: String?
 
     public var shortLabel: String {
-        timer?.text ?? statusLabel
+        timer.map { statusLabel + $0.text } ?? statusLabel
     }
 
     public init(state: BreakBarState, policy: BreakPolicy, now: Date) {
@@ -56,6 +57,20 @@ public struct BreakBarPresentation: Equatable, Sendable {
             primaryActionTitle = "Clock in"
 
         case .focusing:
+            if state.enforcement == .travelWarning,
+               let departureAt = state.travelChain?.map(\.startAt).min()
+            {
+                let remaining = max(0, departureAt.timeIntervalSince(now))
+                statusLabel = "Leave "
+                timer = BreakBarTimerPresentation(direction: .countDown, interval: remaining)
+                title = "Leave soon"
+                detail = "Your travel block starts in \(Self.spoken(remaining))."
+                progress = min(1, max(0, 1 - remaining / BreakTravelPlanner.warningDuration))
+                tone = .travel
+                primaryActionTitle = nil
+                return
+            }
+
             if let manualMeetingStartedAt = state.manualMeetingStartedAt {
                 statusLabel = ""
                 timer = BreakBarTimerPresentation(
@@ -196,6 +211,27 @@ public struct BreakBarPresentation: Equatable, Sendable {
                 : "Classify your away time to continue."
             progress = 1
             tone = .away
+            primaryActionTitle = nil
+
+        case .traveling:
+            statusLabel = "AWAY"
+            timer = nil
+            let chainEnded = state.travelChain?.allSatisfy { $0.endAt <= now } ?? false
+            title = chainEnded ? "Away from home" : "Traveling"
+            detail = chainEnded
+                ? "Return home when you’re back to begin a fresh focus cycle."
+                : "Break enforcement is paused for this travel block."
+            progress = 1
+            tone = .travel
+            primaryActionTitle = chainEnded ? "Return home / resume focus" : nil
+
+        case .offsiteMeeting:
+            statusLabel = "AWAY"
+            timer = nil
+            title = "Offsite meeting"
+            detail = "Break enforcement is paused while you’re away."
+            progress = 1
+            tone = .meeting
             primaryActionTitle = nil
         }
     }

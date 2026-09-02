@@ -22,6 +22,25 @@ enum WarningNotifier {
         }
     }
 
+    static func deliverTravel(remaining: TimeInterval, revision: UInt64) {
+        playSound()
+
+        let content = UNMutableNotificationContent()
+        content.title = "Leave in \(durationText(remaining))"
+        content.body = "Your scheduled travel block is about to begin."
+
+        let request = UNNotificationRequest(
+            identifier: "travel-warning-\(revision)",
+            content: content,
+            trigger: nil
+        )
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                NSLog("BreakBar could not deliver its travel notification: %@", error.localizedDescription)
+            }
+        }
+    }
+
     private static func playSound() {
         if let sound = NSSound(named: NSSound.Name("Glass")) {
             sound.play()

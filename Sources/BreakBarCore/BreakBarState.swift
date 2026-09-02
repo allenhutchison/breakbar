@@ -6,12 +6,16 @@ public enum BreakBarPhase: String, Codable, Equatable, Sendable {
     case onBreak
     case onLunch
     case awayUnclassified
+    case traveling
+    case offsiteMeeting
 }
 
 public enum BreakEnforcement: String, Codable, Equatable, Sendable {
     case none
     case warning
     case required
+    case travelWarning
+    case travelRequired
 }
 
 public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
@@ -38,6 +42,14 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case classifyAwayAsBreak
     case classifyAwayAsOther
     case classifyAwayAsWork
+    case travelPlanUpdated
+    case travelWarningStarted
+    case travelStarted
+    case travelAcknowledged
+    case offsiteMeetingStarted
+    case offsiteMeetingEnded
+    case travelChainEnded
+    case returnHome
 }
 
 public enum BreakPlanReason: String, Codable, Equatable, Sendable {
@@ -70,6 +82,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var manualMeetingStartedAt: Date?
     public var awayPreviousFocusStartedAt: Date?
     public var awayReturnDetectedAt: Date?
+    public var travelChain: [BreakCalendarConstraint]?
     public var lastTransitionReason: BreakTransitionReason?
     public var revision: UInt64
 
@@ -89,6 +102,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         manualMeetingStartedAt: Date? = nil,
         awayPreviousFocusStartedAt: Date? = nil,
         awayReturnDetectedAt: Date? = nil,
+        travelChain: [BreakCalendarConstraint]? = nil,
         lastTransitionReason: BreakTransitionReason? = nil,
         revision: UInt64 = 0
     ) {
@@ -107,6 +121,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.manualMeetingStartedAt = manualMeetingStartedAt
         self.awayPreviousFocusStartedAt = awayPreviousFocusStartedAt
         self.awayReturnDetectedAt = awayReturnDetectedAt
+        self.travelChain = travelChain
         self.lastTransitionReason = lastTransitionReason
         self.revision = revision
     }
@@ -130,6 +145,8 @@ public enum BreakCommand: Equatable, Sendable {
     case emergencyClockOut
     case updateCalendarConstraints([BreakCalendarConstraint])
     case updateCallActivity(BreakCallSignal?)
+    case acknowledgeTravel
+    case returnHome
 }
 
 public enum BreakCommandResult: Equatable, Sendable {

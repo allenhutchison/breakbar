@@ -544,4 +544,172 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(state.revision, 3)
         XCTAssertNil(state.lastTransitionReason)
     }
+
+    func testTravelWarningUsesFiveMinuteDepartureWindow() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let travel = BreakCalendarConstraint(
+            id: "travel",
+            startAt: origin.addingTimeInterval(600),
+            endAt: origin.addingTimeInterval(900),
+            kind: .travel
+        )
+        _ = engine.handle(.updateCalendarConstraints([travel]), at: origin)
+
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(299)), .changed)
+        XCTAssertEqual(engine.state.enforcement, .required)
+
+        // A required break outranks the departure warning until travel actually starts.
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(300)), .unchanged)
+        XCTAssertEqual(engine.state.enforcement, .required)
+    }
+
+    func testTravelWarningAppearsWhenNoHigherPriorityBreakIsRequired() {
+        var engine = BreakBarEngine(policy: BreakPolicy(
+            focusDuration: 1_200,
+            warningDuration: 60,
+            minimumBreakDuration: 20
+        ))
+        _ = engine.handle(.clockIn, at: origin)
+        let travel = BreakCalendarConstraint(
+            id: "travel",
+            startAt: origin.addingTimeInterval(600),
+            endAt: origin.addingTimeInterval(900),
+            kind: .travel
+        )
+        _ = engine.handle(.updateCalendarConstraints([travel]), at: origin)
+
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(299)), .unchanged)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(300)), .changed)
+        XCTAssertEqual(engine.state.enforcement, .travelWarning)
+    }
+
+    func testTravelStartOverridesRequiredBreakAndSuspendsScheduler() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        let travel = BreakCalendarConstraint(
+            id: "travel",
+            startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(200),
+            kind: .travel
+        )
+        _ = engine.handle(.updateCalendarConstraints([travel]), at: origin.addingTimeInterval(60))
+
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(100)), .changed)
+        XCTAssertEqual(engine.state.phase, .traveling)
+        XCTAssertEqual(engine.state.enforcement, .travelRequired)
+        XCTAssertNil(engine.state.focusDueAt)
+
+        XCTAssertEqual(engine.handle(.acknowledgeTravel, at: origin.addingTimeInterval(101)), .changed)
+        XCTAssertEqual(engine.state.enforcement, .none)
+    }
+
+    func testTravelChainMovesThroughOffsiteAndRequiresExplicitReturnHome() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let outbound = BreakCalendarConstraint(
+            id: "outbound", startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(200), kind: .travel
+        )
+        let offsite = BreakCalendarConstraint(
+            id: "offsite", startAt: origin.addingTimeInterval(200),
+            endAt: origin.addingTimeInterval(300), kind: .offsiteMeeting
+        )
+        let returning = BreakCalendarConstraint(
+            id: "return", startAt: origin.addingTimeInterval(300),
+            endAt: origin.addingTimeInterval(400), kind: .travel
+        )
+        _ = engine.handle(
+            .updateCalendarConstraints([outbound, offsite, returning]),
+            at: origin
+        )
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(100))
+        _ = engine.handle(.acknowledgeTravel, at: origin.addingTimeInterval(101))
+
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(200)), .changed)
+        XCTAssertEqual(engine.state.phase, .offsiteMeeting)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(300)), .changed)
+        XCTAssertEqual(engine.state.phase, .traveling)
+        XCTAssertEqual(engine.handle(.returnHome, at: origin.addingTimeInterval(399)), .unchanged)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(400)), .unchanged)
+        XCTAssertEqual(engine.state.phase, .traveling)
+
+        let returnedAt = origin.addingTimeInterval(420)
+        XCTAssertEqual(engine.handle(.returnHome, at: returnedAt), .changed)
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.focusDueAt, returnedAt.addingTimeInterval(60))
+        XCTAssertNil(engine.state.travelChain)
+    }
+
+    func testLateObservedTravelStartsDuringCalendarUpdate() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let travel = BreakCalendarConstraint(
+            id: "travel",
+            startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(300),
+            kind: .travel
+        )
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([travel]),
+                at: origin.addingTimeInterval(150)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .traveling)
+        XCTAssertEqual(engine.state.enforcement, .travelRequired)
+        XCTAssertEqual(engine.state.lastTransitionReason, .travelStarted)
+    }
+
+    func testActiveTravelUsesRefreshedChainEndAndDropsRemovedReturn() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let outbound = BreakCalendarConstraint(
+            id: "outbound",
+            startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(200),
+            kind: .travel
+        )
+        let returning = BreakCalendarConstraint(
+            id: "return",
+            startAt: origin.addingTimeInterval(300),
+            endAt: origin.addingTimeInterval(500),
+            kind: .travel
+        )
+        _ = engine.handle(.updateCalendarConstraints([outbound, returning]), at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(100))
+        _ = engine.handle(.acknowledgeTravel, at: origin.addingTimeInterval(101))
+
+        let shortenedReturn = BreakCalendarConstraint(
+            id: "return",
+            startAt: origin.addingTimeInterval(300),
+            endAt: origin.addingTimeInterval(350),
+            kind: .travel
+        )
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([outbound, shortenedReturn]),
+                at: origin.addingTimeInterval(150)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.travelChain?.map(\.endAt).max(), shortenedReturn.endAt)
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([outbound]),
+                at: origin.addingTimeInterval(160)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.travelChain?.map(\.id), ["outbound"])
+        XCTAssertEqual(
+            engine.handle(.returnHome, at: origin.addingTimeInterval(200)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+    }
 }

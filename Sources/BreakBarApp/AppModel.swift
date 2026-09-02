@@ -112,6 +112,7 @@ final class AppModel: ObservableObject {
         case .breakTime: "cup.and.heat.waves.fill"
         case .lunch: "fork.knife"
         case .away: "figure.walk"
+        case .travel: "car.fill"
         }
     }
 
@@ -136,6 +137,8 @@ final class AppModel: ObservableObject {
             endLunch()
         case .awayUnclassified:
             break
+        case .traveling, .offsiteMeeting:
+            returnHome()
         }
     }
 
@@ -206,6 +209,18 @@ final class AppModel: ObservableObject {
         }
         if case let .rejected(remaining) = result {
             lastMessage = "Stay away for another \(BreakBarPresentation.clock(remaining))."
+        }
+    }
+
+    func acknowledgeTravel() {
+        apply(.acknowledgeTravel)
+    }
+
+    func returnHome() {
+        let eventDate = Date()
+        if apply(.returnHome, at: eventDate) == .changed {
+            applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
         }
     }
 
@@ -574,6 +589,13 @@ final class AppModel: ObservableObject {
                 revision: state.revision
             )
         }
+        if previousState.enforcement != .travelWarning && state.enforcement == .travelWarning {
+            let departureAt = state.travelChain?.map(\.startAt).min() ?? eventDate
+            WarningNotifier.deliverTravel(
+                remaining: max(0, departureAt.timeIntervalSince(eventDate)),
+                revision: state.revision
+            )
+        }
         synchronizeWindows(at: eventDate)
         return result
     }
@@ -593,7 +615,12 @@ final class AppModel: ObservableObject {
         at date: Date,
         bringReturnPanelToFront: Bool = false
     ) {
-        if state.phase == .focusing && state.enforcement == .required {
+        if state.phase == .traveling && state.enforcement == .travelRequired {
+            overlayController.showTravel(
+                acknowledge: { [weak self] in self?.acknowledgeTravel() },
+                clockOut: { [weak self] in self?.clockOut() }
+            )
+        } else if state.phase == .focusing && state.enforcement == .required {
             overlayController.show(
                 startBreak: { [weak self] in self?.startBreak() },
                 clockOut: { [weak self] in self?.clockOut() },

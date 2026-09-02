@@ -3,8 +3,11 @@ import SwiftUI
 
 @MainActor
 final class OverlayController {
+    private enum Mode { case breakRequired, travelRequired }
+
     private var panel: NSPanel?
     private var emergencyEscapeState: EmergencyEscapeState?
+    private var mode: Mode?
 
     func show(
         startBreak: @escaping () -> Void,
@@ -12,6 +15,7 @@ final class OverlayController {
         emergencyStartBreak: @escaping () -> Void,
         emergencyClockOut: @escaping () -> Void
     ) {
+        if panel != nil, mode != .breakRequired { hide() }
         guard panel == nil, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
 
         let escapeState = EmergencyEscapeState()
@@ -47,6 +51,40 @@ final class OverlayController {
         panel.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         emergencyEscapeState = escapeState
+        mode = .breakRequired
+        self.panel = panel
+    }
+
+    func showTravel(
+        acknowledge: @escaping () -> Void,
+        clockOut: @escaping () -> Void
+    ) {
+        if panel != nil, mode != .travelRequired { hide() }
+        guard panel == nil, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
+
+        let panel = BreakOverlayPanel(
+            contentRect: screen.frame,
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false,
+            screen: screen
+        )
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.backgroundColor = .clear
+        panel.isOpaque = false
+        panel.hasShadow = false
+        panel.hidesOnDeactivate = false
+        panel.contentViewController = NSHostingController(
+            rootView: TravelRequiredView(
+                acknowledge: acknowledge,
+                clockOut: clockOut
+            )
+        )
+        panel.setFrame(screen.frame, display: true)
+        panel.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        mode = .travelRequired
         self.panel = panel
     }
 
@@ -55,6 +93,73 @@ final class OverlayController {
         emergencyEscapeState = nil
         panel?.orderOut(nil)
         panel = nil
+        mode = nil
+    }
+}
+
+private struct TravelRequiredView: View {
+    @State private var isConfirmingClockOut = false
+    let acknowledge: () -> Void
+    let clockOut: () -> Void
+
+    var body: some View {
+        ZStack {
+            Rectangle()
+                .fill(.black.opacity(0.88))
+                .ignoresSafeArea()
+
+            VStack(spacing: 28) {
+                Image(systemName: "car.fill")
+                    .font(.system(size: 72, weight: .semibold))
+                    .foregroundStyle(Color(red: 0.94, green: 0.48, blue: 0.12))
+
+                VStack(spacing: 12) {
+                    Text("TIME TO GO")
+                        .font(.system(size: 48, weight: .black, design: .rounded))
+                        .tracking(1.5)
+                    Text("Your travel block has started. Break reminders are paused while you’re away.")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+                .multilineTextAlignment(.center)
+
+                Button("I’m leaving", action: acknowledge)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Color(red: 0.94, green: 0.48, blue: 0.12))
+                    .controlSize(.large)
+                    .keyboardShortcut(.return, modifiers: [])
+
+                Button("Clock out instead") {
+                    isConfirmingClockOut = true
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white.opacity(0.65))
+            }
+            .foregroundStyle(.white)
+            .padding(48)
+
+            if isConfirmingClockOut {
+                Color.black.opacity(0.72).ignoresSafeArea()
+                VStack(spacing: 18) {
+                    Text("Clock out?")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                    Text("This ends the current work session.")
+                        .foregroundStyle(.secondary)
+                    Button("Clock out", role: .destructive) {
+                        isConfirmingClockOut = false
+                        clockOut()
+                    }
+                    .controlSize(.large)
+                    Button("Keep working") { isConfirmingClockOut = false }
+                        .buttonStyle(.plain)
+                }
+                .padding(32)
+                .frame(width: 420)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+                .foregroundStyle(.primary)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 }
 

@@ -246,4 +246,38 @@ final class BreakBarPresentationTests: XCTestCase {
             "+1:05"
         )
     }
+
+    func testTravelWarningLabelsMenuCountdownAndAwayOffersReturnAfterChain() {
+        let travel = BreakCalendarConstraint(
+            id: "travel",
+            startAt: origin.addingTimeInterval(300),
+            endAt: origin.addingTimeInterval(600),
+            kind: .travel
+        )
+        let warning = BreakBarPresentation(
+            state: BreakBarState(
+                phase: .focusing,
+                enforcement: .travelWarning,
+                phaseStartedAt: origin,
+                focusDueAt: origin.addingTimeInterval(900),
+                travelChain: [travel]
+            ),
+            policy: policy,
+            now: origin.addingTimeInterval(250)
+        )
+        XCTAssertEqual(warning.shortLabel, "Leave 0:50")
+        XCTAssertEqual(warning.tone, .travel)
+
+        let away = BreakBarPresentation(
+            state: BreakBarState(
+                phase: .traveling,
+                phaseStartedAt: origin,
+                travelChain: [travel]
+            ),
+            policy: policy,
+            now: origin.addingTimeInterval(601)
+        )
+        XCTAssertEqual(away.shortLabel, "AWAY")
+        XCTAssertEqual(away.primaryActionTitle, "Return home / resume focus")
+    }
 }
