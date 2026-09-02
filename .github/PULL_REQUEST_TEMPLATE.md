@@ -12,5 +12,6 @@
 
 ## Checklist
 
-- [ ] Tests pass locally
+- [ ] `make test` passes locally
+- [ ] `make build` passes locally
 - [ ] Documentation updated (or N/A with a reason)
