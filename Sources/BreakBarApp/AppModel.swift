@@ -256,7 +256,10 @@ final class AppModel: ObservableObject {
                 focusDuration: validatedDuration,
                 warningDuration: min(policy.warningDuration, validatedDuration),
                 minimumBreakDuration: policy.minimumBreakDuration,
-                maximumSeatedDuration: max(policy.maximumSeatedDuration, validatedDuration),
+                maximumSeatedDuration: max(
+                    BreakPolicy.standard.maximumSeatedDuration,
+                    validatedDuration
+                ),
                 idleThreshold: policy.idleThreshold
             )
         )
