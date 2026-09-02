@@ -11,6 +11,7 @@ struct SettingsView: View {
                 LabeledContent("Focus interval", value: duration(model.policy.focusDuration))
                 LabeledContent("Warning", value: duration(model.policy.warningDuration))
                 LabeledContent("Minimum break", value: duration(model.policy.minimumBreakDuration))
+                LabeledContent("Idle-away threshold", value: duration(model.policy.idleThreshold))
 
                 Toggle(
                     "Launch BreakBar at login",

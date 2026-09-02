@@ -70,6 +70,37 @@ public struct BreakBarEngine: Sendable {
             endManualMeeting(at: now)
             return .changed
 
+        case let .idleThresholdReached(idleStartedAt):
+            guard state.phase == .focusing,
+                  state.manualMeetingStartedAt == nil,
+                  state.liveCallStartedAt == nil,
+                  !meetingIsActive(at: now)
+            else {
+                return .unchanged
+            }
+            beginAway(idleStartedAt: idleStartedAt, observedAt: now)
+            return .changed
+
+        case .userActivityResumed:
+            guard state.phase == .awayUnclassified,
+                  state.awayReturnDetectedAt == nil
+            else {
+                return .unchanged
+            }
+            state.awayReturnDetectedAt = now
+            state.lastTransitionReason = .userActivityResumed
+            state.revision &+= 1
+            return .changed
+
+        case let .classifyAway(classification):
+            guard state.phase == .awayUnclassified,
+                  state.awayReturnDetectedAt != nil
+            else {
+                return .unchanged
+            }
+            classifyAway(as: classification, at: now)
+            return .changed
+
         case .tick, .reconcile:
             return updateEnforcement(
                 at: now,
@@ -102,6 +133,8 @@ public struct BreakBarEngine: Sendable {
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
         state.manualMeetingStartedAt = nil
+        state.awayPreviousFocusStartedAt = nil
+        state.awayReturnDetectedAt = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
         return .changed
@@ -121,6 +154,8 @@ public struct BreakBarEngine: Sendable {
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
         state.manualMeetingStartedAt = nil
+        state.awayPreviousFocusStartedAt = nil
+        state.awayReturnDetectedAt = nil
         state.lastTransitionReason = .startLunch
         state.revision &+= 1
     }
@@ -152,6 +187,46 @@ public struct BreakBarEngine: Sendable {
         }
         state.lastTransitionReason = .endManualMeeting
         state.revision &+= 1
+    }
+
+    private mutating func beginAway(idleStartedAt: Date, observedAt now: Date) {
+        let focusStartedAt = state.phaseStartedAt ?? now
+        let awayStartedAt = min(now, max(focusStartedAt, idleStartedAt))
+        state.phase = .awayUnclassified
+        state.enforcement = .none
+        state.phaseStartedAt = awayStartedAt
+        state.minimumBreakEndsAt = nil
+        state.awayPreviousFocusStartedAt = focusStartedAt
+        state.awayReturnDetectedAt = nil
+        state.lastTransitionReason = .idleThresholdReached
+        state.revision &+= 1
+    }
+
+    private mutating func classifyAway(as classification: AwayClassification, at now: Date) {
+        let returnedAt = min(now, state.awayReturnDetectedAt ?? now)
+        if classification == .countAsWork {
+            state.phase = .focusing
+            state.enforcement = .none
+            state.phaseStartedAt = state.awayPreviousFocusStartedAt ?? returnedAt
+            state.awayPreviousFocusStartedAt = nil
+            state.awayReturnDetectedAt = nil
+            state.lastTransitionReason = .classifyAwayAsWork
+            state.revision &+= 1
+            return
+        }
+
+        let reason: BreakTransitionReason
+        switch classification {
+        case .lunch:
+            reason = .classifyAwayAsLunch
+        case .breakTime:
+            reason = .classifyAwayAsBreak
+        case .otherAway:
+            reason = .classifyAwayAsOther
+        case .countAsWork:
+            preconditionFailure("Count-as-work classification returned early")
+        }
+        beginFocus(at: returnedAt, reason: reason)
     }
 
     private mutating func updateEnforcement(
@@ -219,6 +294,8 @@ public struct BreakBarEngine: Sendable {
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
         state.manualMeetingStartedAt = nil
+        state.awayPreviousFocusStartedAt = nil
+        state.awayReturnDetectedAt = nil
         state.lastTransitionReason = reason
         state.revision &+= 1
     }

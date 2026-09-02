@@ -87,6 +87,12 @@ struct BreakBarMenuView: View {
                     }
                 }
 
+                if model.state.phase == .awayUnclassified,
+                   model.state.awayReturnDetectedAt != nil
+                {
+                    AwayClassificationButtons(model: model)
+                }
+
                 if model.state.phase != .clockedOut {
                     Button(action: model.clockOut) {
                         Text("Clock out")
@@ -120,6 +126,40 @@ struct BreakBarMenuView: View {
         }
         .frame(width: 360)
         .background(.ultraThinMaterial)
+    }
+}
+
+private struct AwayClassificationButtons: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text("Classify your time away")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            classificationButton("Lunch", tone: .lunch, classification: .lunch)
+            classificationButton("Break", tone: .breakTime, classification: .breakTime)
+            classificationButton("Other away", tone: .away, classification: .otherAway)
+            classificationButton("Count as work", tone: .focus, classification: .countAsWork)
+        }
+    }
+
+    private func classificationButton(
+        _ title: String,
+        tone: BreakBarPresentation.Tone,
+        classification: AwayClassification
+    ) -> some View {
+        Button {
+            model.classifyAway(as: classification)
+        } label: {
+            Text(title)
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(BreakPalette(tone: tone).accent)
+        .controlSize(.large)
     }
 }
 
@@ -230,6 +270,8 @@ struct BreakPalette {
             accent = Color(red: 0.12, green: 0.64, blue: 0.48)
         case .lunch:
             accent = Color(red: 0.90, green: 0.45, blue: 0.16)
+        case .away:
+            accent = Color(red: 0.42, green: 0.44, blue: 0.50)
         }
         track = accent.opacity(0.16)
     }

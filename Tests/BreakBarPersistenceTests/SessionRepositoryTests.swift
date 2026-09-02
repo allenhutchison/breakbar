@@ -60,6 +60,10 @@ final class SessionRepositoryTests: XCTestCase {
             ([(.clockIn, 0), (.startBreak, 60)], 2),
             ([(.clockIn, 0), (.startLunch, 30)], 2),
             ([(.clockIn, 0), (.startManualMeeting, 30)], 1),
+            ([
+                (.clockIn, 0),
+                (.idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)), 30),
+            ], 2),
         ]
 
         for scenario in scenarios {
@@ -226,6 +230,110 @@ final class SessionRepositoryTests: XCTestCase {
         XCTAssertEqual(try repository.stats().totalIntervals, 3)
         XCTAssertEqual(try repository.stats().focusIntervals, 2)
         XCTAssertEqual(try repository.stats().lunchIntervals, 1)
+    }
+
+    func testAwayClassificationsRewriteHistoryAndStartFreshFocus() throws {
+        let cases: [(AwayClassification, focus: Int, breaks: Int, lunches: Int, away: Int)] = [
+            (.lunch, 2, 0, 1, 0),
+            (.breakTime, 2, 1, 0, 0),
+            (.otherAway, 2, 0, 0, 1),
+        ]
+
+        for testCase in cases {
+            try withRepository { repository, _ in
+                var engine = BreakBarEngine(policy: policy)
+                try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+                try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+                try commit(
+                    .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+                    at: origin.addingTimeInterval(30),
+                    engine: &engine,
+                    repository: repository
+                )
+                try commit(
+                    .userActivityResumed,
+                    at: origin.addingTimeInterval(80),
+                    engine: &engine,
+                    repository: repository
+                )
+                try commit(
+                    .classifyAway(testCase.0),
+                    at: origin.addingTimeInterval(85),
+                    engine: &engine,
+                    repository: repository
+                )
+
+                let stats = try repository.stats()
+                XCTAssertEqual(stats.totalIntervals, 3)
+                XCTAssertEqual(stats.openIntervals, 1)
+                XCTAssertEqual(stats.focusIntervals, testCase.focus)
+                XCTAssertEqual(stats.breakIntervals, testCase.breaks)
+                XCTAssertEqual(stats.lunchIntervals, testCase.lunches)
+                XCTAssertEqual(stats.awayIntervals, testCase.away)
+                XCTAssertEqual(engine.state.phaseStartedAt, origin.addingTimeInterval(80))
+            }
+        }
+    }
+
+    func testCountAsWorkMergesTentativeAwayBackIntoFocus() throws {
+        try withRepository { repository, databaseURL in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            try commit(
+                .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+                at: origin.addingTimeInterval(30),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .userActivityResumed,
+                at: origin.addingTimeInterval(80),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .classifyAway(.countAsWork),
+                at: origin.addingTimeInterval(85),
+                engine: &engine,
+                repository: repository
+            )
+
+            let stats = try repository.stats()
+            XCTAssertEqual(stats.totalIntervals, 1)
+            XCTAssertEqual(stats.openIntervals, 1)
+            XCTAssertEqual(stats.focusIntervals, 1)
+            XCTAssertEqual(stats.awayIntervals, 0)
+
+            let reopened = try SessionRepository(url: databaseURL)
+            XCTAssertEqual(try reopened.loadState(), engine.state)
+        }
+    }
+
+    func testVersionTwoDatabaseMigratesToAwaySchema() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BreakBarV2MigrationTests-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let databaseURL = directory.appendingPathComponent("breakbar.sqlite")
+        try createVersionTwoDatabase(at: databaseURL)
+
+        let repository = try SessionRepository(url: databaseURL)
+        XCTAssertEqual(try repository.stats().focusIntervals, 1)
+        XCTAssertEqual(try repository.stats().awayIntervals, 0)
+
+        var engine = BreakBarEngine(policy: policy)
+        try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+        try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+        try commit(
+            .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+            at: origin.addingTimeInterval(30),
+            engine: &engine,
+            repository: repository
+        )
+
+        XCTAssertEqual(try repository.stats().awayIntervals, 1)
     }
 
     func testEmergencyTransitionReasonSurvivesReopen() throws {
@@ -406,6 +514,63 @@ final class SessionRepositoryTests: XCTestCase {
             sqlite3_free(errorMessage)
             throw NSError(
                 domain: "BreakBarMigrationTests",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: message]
+            )
+        }
+    }
+
+    private func createVersionTwoDatabase(at url: URL) throws {
+        var database: OpaquePointer?
+        guard sqlite3_open(url.path, &database) == SQLITE_OK, let database else {
+            throw NSError(domain: "BreakBarV2MigrationTests", code: 1)
+        }
+        defer { sqlite3_close(database) }
+
+        let sql =
+            """
+            CREATE TABLE work_sessions (
+                id TEXT PRIMARY KEY,
+                started_at_utc REAL NOT NULL,
+                ended_at_utc REAL,
+                created_at_utc REAL NOT NULL
+            );
+            CREATE UNIQUE INDEX one_open_work_session
+            ON work_sessions((1)) WHERE ended_at_utc IS NULL;
+            CREATE TABLE intervals (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch')),
+                started_at_utc REAL NOT NULL,
+                ended_at_utc REAL,
+                source TEXT NOT NULL,
+                minimum_satisfied_at_utc REAL,
+                created_at_utc REAL NOT NULL,
+                CHECK (ended_at_utc IS NULL OR ended_at_utc >= started_at_utc)
+            );
+            CREATE UNIQUE INDEX one_open_interval
+            ON intervals((1)) WHERE ended_at_utc IS NULL;
+            CREATE TABLE state_snapshot (
+                singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+                revision INTEGER NOT NULL,
+                payload BLOB NOT NULL,
+                updated_at_utc REAL NOT NULL
+            );
+            INSERT INTO work_sessions
+                (id, started_at_utc, ended_at_utc, created_at_utc)
+            VALUES ('old-session', 10, 20, 10);
+            INSERT INTO intervals
+                (id, session_id, kind, started_at_utc, ended_at_utc, source, created_at_utc)
+            VALUES ('old-focus', 'old-session', 'focus', 10, 20, 'state_machine', 10);
+            PRAGMA user_version = 2;
+            """
+
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        guard sqlite3_exec(database, sql, nil, nil, &errorMessage) == SQLITE_OK else {
+            let message = errorMessage.map { String(cString: $0) } ?? "Unknown SQLite error"
+            sqlite3_free(errorMessage)
+            throw NSError(
+                domain: "BreakBarV2MigrationTests",
                 code: 2,
                 userInfo: [NSLocalizedDescriptionKey: message]
             )

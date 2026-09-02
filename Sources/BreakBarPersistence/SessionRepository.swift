@@ -30,6 +30,7 @@ public struct SessionRepositoryStats: Equatable, Sendable {
     public let focusIntervals: Int
     public let breakIntervals: Int
     public let lunchIntervals: Int
+    public let awayIntervals: Int
 
     public init(
         totalSessions: Int,
@@ -38,7 +39,8 @@ public struct SessionRepositoryStats: Equatable, Sendable {
         openIntervals: Int,
         focusIntervals: Int,
         breakIntervals: Int,
-        lunchIntervals: Int = 0
+        lunchIntervals: Int = 0,
+        awayIntervals: Int = 0
     ) {
         self.totalSessions = totalSessions
         self.openSessions = openSessions
@@ -47,11 +49,12 @@ public struct SessionRepositoryStats: Equatable, Sendable {
         self.focusIntervals = focusIntervals
         self.breakIntervals = breakIntervals
         self.lunchIntervals = lunchIntervals
+        self.awayIntervals = awayIntervals
     }
 }
 
 public final class SessionRepository {
-    public static let schemaVersion = 2
+    public static let schemaVersion = 3
 
     private var database: OpaquePointer?
     private let encoder = JSONEncoder()
@@ -188,7 +191,60 @@ public final class SessionRepository {
                     minimumSatisfiedAt: nil
                 )
 
-            case (.focusing, .clockedOut), (.onBreak, .clockedOut), (.onLunch, .clockedOut):
+            case (.focusing, .awayUnclassified):
+                let sessionID = try openSessionID()
+                let awayStartedAt = next.phaseStartedAt ?? date
+                try closeOpenInterval(at: awayStartedAt)
+                try insertInterval(
+                    sessionID: sessionID,
+                    phase: .awayUnclassified,
+                    startedAt: awayStartedAt,
+                    minimumSatisfiedAt: nil
+                )
+
+            case (.awayUnclassified, .focusing):
+                let sessionID = try openSessionID()
+                let returnedAt = next.phaseStartedAt
+                    ?? previous.awayReturnDetectedAt
+                    ?? date
+                switch next.lastTransitionReason {
+                case .classifyAwayAsLunch:
+                    try resolveOpenAwayInterval(as: "lunch", endedAt: returnedAt)
+                    try insertInterval(
+                        sessionID: sessionID,
+                        phase: .focusing,
+                        startedAt: returnedAt,
+                        minimumSatisfiedAt: nil
+                    )
+                case .classifyAwayAsBreak:
+                    try resolveOpenAwayInterval(as: "break", endedAt: returnedAt)
+                    try insertInterval(
+                        sessionID: sessionID,
+                        phase: .focusing,
+                        startedAt: returnedAt,
+                        minimumSatisfiedAt: nil
+                    )
+                case .classifyAwayAsOther:
+                    try closeOpenInterval(at: returnedAt)
+                    try insertInterval(
+                        sessionID: sessionID,
+                        phase: .focusing,
+                        startedAt: returnedAt,
+                        minimumSatisfiedAt: nil
+                    )
+                case .classifyAwayAsWork:
+                    try restoreFocusAcrossOpenAwayInterval(sessionID: sessionID)
+                default:
+                    throw SessionRepositoryError.unsupportedTransition(
+                        from: previous.phase,
+                        to: next.phase
+                    )
+                }
+
+            case (.focusing, .clockedOut),
+                 (.onBreak, .clockedOut),
+                 (.onLunch, .clockedOut),
+                 (.awayUnclassified, .clockedOut):
                 _ = try openSessionID()
                 try closeOpenInterval(at: date)
                 try closeOpenSession(at: date)
@@ -196,6 +252,7 @@ public final class SessionRepository {
             case (.focusing, .focusing),
                  (.onBreak, .onBreak),
                  (.onLunch, .onLunch),
+                 (.awayUnclassified, .awayUnclassified),
                  (.clockedOut, .clockedOut):
                 break
 
@@ -218,12 +275,13 @@ public final class SessionRepository {
             openIntervals: try count("SELECT COUNT(*) FROM intervals WHERE ended_at_utc IS NULL"),
             focusIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'focus'"),
             breakIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'break'"),
-            lunchIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'lunch'")
+            lunchIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'lunch'"),
+            awayIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'away'")
         )
     }
 
     private func migrate() throws {
-        let version = try count("PRAGMA user_version")
+        var version = try count("PRAGMA user_version")
         guard version <= Self.schemaVersion else {
             throw SessionRepositoryError.sqlite(
                 "Database schema \(version) is newer than this app supports."
@@ -246,7 +304,7 @@ public final class SessionRepository {
                 CREATE TABLE intervals (
                     id TEXT PRIMARY KEY,
                     session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
-                    kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch')),
+                    kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch', 'away')),
                     started_at_utc REAL NOT NULL,
                     ended_at_utc REAL,
                     source TEXT NOT NULL,
@@ -265,7 +323,7 @@ public final class SessionRepository {
                     updated_at_utc REAL NOT NULL
                 );
 
-                PRAGMA user_version = 2;
+                PRAGMA user_version = 3;
                 """
                 )
             }
@@ -305,6 +363,42 @@ public final class SessionRepository {
                     """
                 )
             }
+            version = 2
+        }
+
+        if version == 2 {
+            try transaction {
+                try execute(
+                    """
+                    CREATE TABLE intervals_v3 (
+                        id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL REFERENCES work_sessions(id) ON DELETE CASCADE,
+                        kind TEXT NOT NULL CHECK (kind IN ('focus', 'break', 'lunch', 'away')),
+                        started_at_utc REAL NOT NULL,
+                        ended_at_utc REAL,
+                        source TEXT NOT NULL,
+                        minimum_satisfied_at_utc REAL,
+                        created_at_utc REAL NOT NULL,
+                        CHECK (ended_at_utc IS NULL OR ended_at_utc >= started_at_utc)
+                    );
+
+                    INSERT INTO intervals_v3
+                        (id, session_id, kind, started_at_utc, ended_at_utc, source,
+                         minimum_satisfied_at_utc, created_at_utc)
+                    SELECT id, session_id, kind, started_at_utc, ended_at_utc, source,
+                           minimum_satisfied_at_utc, created_at_utc
+                    FROM intervals;
+
+                    DROP TABLE intervals;
+                    ALTER TABLE intervals_v3 RENAME TO intervals;
+
+                    CREATE UNIQUE INDEX one_open_interval
+                    ON intervals((1)) WHERE ended_at_utc IS NULL;
+
+                    PRAGMA user_version = 3;
+                    """
+                )
+            }
         }
     }
 
@@ -330,6 +424,7 @@ public final class SessionRepository {
         case .focusing: kind = "focus"
         case .onBreak: kind = "break"
         case .onLunch: kind = "lunch"
+        case .awayUnclassified: kind = "away"
         case .clockedOut:
             throw SessionRepositoryError.unsupportedTransition(from: phase, to: phase)
         }
@@ -366,6 +461,50 @@ public final class SessionRepository {
             "UPDATE intervals SET ended_at_utc = ? WHERE ended_at_utc IS NULL"
         ) { statement in
             try bind(date, to: statement, at: 1)
+            try stepDone(statement)
+        }
+        guard sqlite3_changes(database) == 1 else {
+            throw SessionRepositoryError.missingOpenInterval
+        }
+    }
+
+    private func resolveOpenAwayInterval(as kind: String, endedAt date: Date) throws {
+        try withStatement(
+            """
+            UPDATE intervals
+            SET kind = ?, ended_at_utc = ?
+            WHERE ended_at_utc IS NULL AND kind = 'away'
+            """
+        ) { statement in
+            try bind(kind, to: statement, at: 1)
+            try bind(date, to: statement, at: 2)
+            try stepDone(statement)
+        }
+        guard sqlite3_changes(database) == 1 else {
+            throw SessionRepositoryError.missingOpenInterval
+        }
+    }
+
+    private func restoreFocusAcrossOpenAwayInterval(sessionID: String) throws {
+        try execute("DELETE FROM intervals WHERE ended_at_utc IS NULL AND kind = 'away'")
+        guard sqlite3_changes(database) == 1 else {
+            throw SessionRepositoryError.missingOpenInterval
+        }
+
+        try withStatement(
+            """
+            UPDATE intervals
+            SET ended_at_utc = NULL
+            WHERE id = (
+                SELECT id
+                FROM intervals
+                WHERE session_id = ? AND kind = 'focus'
+                ORDER BY started_at_utc DESC
+                LIMIT 1
+            )
+            """
+        ) { statement in
+            try bind(sessionID, to: statement, at: 1)
             try stepDone(statement)
         }
         guard sqlite3_changes(database) == 1 else {

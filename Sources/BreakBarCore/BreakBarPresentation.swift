@@ -29,6 +29,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
         case required
         case breakTime
         case lunch
+        case away
     }
 
     public var statusLabel: String
@@ -183,6 +184,19 @@ public struct BreakBarPresentation: Equatable, Sendable {
             progress = 1
             tone = .lunch
             primaryActionTitle = "End lunch"
+
+        case .awayUnclassified:
+            let awayEndedAt = min(now, state.awayReturnDetectedAt ?? now)
+            let elapsed = max(0, awayEndedAt.timeIntervalSince(state.phaseStartedAt ?? awayEndedAt))
+            statusLabel = ""
+            timer = BreakBarTimerPresentation(direction: .countUp, interval: elapsed)
+            title = state.awayReturnDetectedAt == nil ? "Away" : "Welcome back"
+            detail = state.awayReturnDetectedAt == nil
+                ? "Break enforcement is paused until activity resumes."
+                : "Classify your away time to continue."
+            progress = 1
+            tone = .away
+            primaryActionTitle = nil
         }
     }
 

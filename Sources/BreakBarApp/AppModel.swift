@@ -24,13 +24,19 @@ final class AppModel: ObservableObject {
     private let repository: SessionRepository?
     private let overlayController = OverlayController()
     private let breakReturnPanelController = BreakReturnPanelController()
+    private let awayReturnPanelController = AwayReturnPanelController()
     private var ticker: Task<Void, Never>?
     private var observations = Set<AnyCancellable>()
 
     init() {
         isDemoMode = CommandLine.arguments.contains("--demo")
         policy = isDemoMode
-            ? BreakPolicy(focusDuration: 60, warningDuration: 15, minimumBreakDuration: 20)
+            ? BreakPolicy(
+                focusDuration: 60,
+                warningDuration: 15,
+                minimumBreakDuration: 20,
+                idleThreshold: 10
+            )
             : .standard
 
         var restored = BreakBarState()
@@ -109,6 +115,7 @@ final class AppModel: ObservableObject {
         case .required: "figure.walk.motion"
         case .breakTime: "cup.and.heat.waves.fill"
         case .lunch: "fork.knife"
+        case .away: "figure.walk"
         }
     }
 
@@ -131,6 +138,8 @@ final class AppModel: ObservableObject {
             returnToFocus()
         case .onLunch:
             endLunch()
+        case .awayUnclassified:
+            break
         }
     }
 
@@ -173,6 +182,15 @@ final class AppModel: ObservableObject {
     func endManualMeeting() {
         let eventDate = Date()
         if apply(.endManualMeeting, at: eventDate) == .changed {
+            applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
+            _ = apply(.tick, at: eventDate)
+        }
+    }
+
+    func classifyAway(as classification: AwayClassification) {
+        let eventDate = Date()
+        if apply(.classifyAway(classification), at: eventDate) == .changed {
             applyCurrentCalendarConstraints(at: eventDate)
             applyCurrentCallActivity(at: eventDate)
             _ = apply(.tick, at: eventDate)
@@ -234,6 +252,7 @@ final class AppModel: ObservableObject {
         let eventDate = Date()
         applyCurrentCalendarConstraints(at: eventDate)
         applyCurrentCallActivity(at: eventDate)
+        _ = updateIdleState(at: eventDate)
         _ = apply(.reconcile, at: eventDate)
         synchronizeWindows(at: eventDate, bringReturnPanelToFront: true)
     }
@@ -243,6 +262,7 @@ final class AppModel: ObservableObject {
         let displayedText = presentation.shortLabel
         let calendarResult = applyCurrentCalendarConstraints(at: eventDate)
         let callResult = applyCurrentCallActivity(at: eventDate)
+        let idleResult = updateIdleState(at: eventDate)
         let timerResult = apply(.tick, at: eventDate, publishTime: false)
         let nextText = BreakBarPresentation(
             state: state,
@@ -254,6 +274,7 @@ final class AppModel: ObservableObject {
         // formatted second or state actually changed.
         if calendarResult == .changed
             || callResult == .changed
+            || idleResult == .changed
             || timerResult == .changed
             || nextText != displayedText
         {
@@ -273,6 +294,31 @@ final class AppModel: ObservableObject {
         _ = applyCurrentCallActivity(rawSignal: signal, at: eventDate)
         _ = applyCurrentCalendarConstraints(at: eventDate)
         _ = apply(.tick, at: eventDate)
+    }
+
+    @discardableResult
+    private func updateIdleState(at date: Date) -> BreakCommandResult {
+        let idleDuration = IdleActivityMonitor.secondsSinceLastInput
+        guard idleDuration.isFinite, idleDuration >= 0 else { return .unchanged }
+
+        if state.phase == .focusing, idleDuration >= policy.idleThreshold {
+            return apply(
+                .idleThresholdReached(
+                    idleStartedAt: date.addingTimeInterval(-idleDuration)
+                ),
+                at: date,
+                publishTime: false
+            )
+        }
+
+        if state.phase == .awayUnclassified,
+           state.awayReturnDetectedAt == nil,
+           idleDuration < 2
+        {
+            return apply(.userActivityResumed, at: date, publishTime: false)
+        }
+
+        return .unchanged
     }
 
     @discardableResult
@@ -425,6 +471,20 @@ final class AppModel: ObservableObject {
             )
         } else {
             breakReturnPanelController.hide()
+        }
+
+        if state.phase == .awayUnclassified,
+           state.awayReturnDetectedAt != nil
+        {
+            awayReturnPanelController.show(
+                presentation: BreakBarPresentation(state: state, policy: policy, now: date),
+                classify: { [weak self] classification in
+                    self?.classifyAway(as: classification)
+                },
+                clockOut: { [weak self] in self?.clockOut() }
+            )
+        } else {
+            awayReturnPanelController.hide()
         }
     }
 

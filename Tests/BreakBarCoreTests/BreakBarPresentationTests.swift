@@ -214,6 +214,28 @@ final class BreakBarPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.primaryActionTitle, "End meeting")
     }
 
+    func testAwayTimerFreezesAtDetectedReturnUntilClassification() {
+        let state = BreakBarState(
+            phase: .awayUnclassified,
+            phaseStartedAt: origin.addingTimeInterval(10),
+            awayPreviousFocusStartedAt: origin,
+            awayReturnDetectedAt: origin.addingTimeInterval(75),
+            lastTransitionReason: .userActivityResumed,
+            revision: 4
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin.addingTimeInterval(90)
+        )
+
+        XCTAssertEqual(presentation.shortLabel, "+1:05")
+        XCTAssertEqual(presentation.title, "Welcome back")
+        XCTAssertEqual(presentation.tone, .away)
+        XCTAssertNil(presentation.primaryActionTitle)
+    }
+
     func testTimerFormattingIsSharedAcrossStates() {
         XCTAssertEqual(
             BreakBarTimerPresentation(direction: .countDown, interval: 65).text,

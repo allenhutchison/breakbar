@@ -419,6 +419,96 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.enforcement, .none)
     }
 
+    func testIdleThresholdEntersAwayAtLastInputAndSuspendsEnforcement() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(50))
+        XCTAssertEqual(engine.state.enforcement, .warning)
+
+        let awayStartedAt = origin.addingTimeInterval(20)
+        XCTAssertEqual(
+            engine.handle(
+                .idleThresholdReached(idleStartedAt: awayStartedAt),
+                at: origin.addingTimeInterval(50)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .awayUnclassified)
+        XCTAssertEqual(engine.state.phaseStartedAt, awayStartedAt)
+        XCTAssertEqual(engine.state.awayPreviousFocusStartedAt, origin)
+        XCTAssertNil(engine.state.awayReturnDetectedAt)
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(500)),
+            .unchanged
+        )
+    }
+
+    func testAwayClassificationRequiresReturnAndStartsFreshCycleAtReturnTime() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(
+            .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+            at: origin.addingTimeInterval(30)
+        )
+        XCTAssertEqual(
+            engine.handle(.classifyAway(.lunch), at: origin.addingTimeInterval(70)),
+            .unchanged
+        )
+
+        let returnedAt = origin.addingTimeInterval(80)
+        XCTAssertEqual(engine.handle(.userActivityResumed, at: returnedAt), .changed)
+        XCTAssertEqual(engine.state.awayReturnDetectedAt, returnedAt)
+        XCTAssertEqual(
+            engine.handle(.classifyAway(.lunch), at: origin.addingTimeInterval(85)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.phaseStartedAt, returnedAt)
+        XCTAssertEqual(engine.state.focusDueAt, returnedAt.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.lastTransitionReason, .classifyAwayAsLunch)
+    }
+
+    func testCountAsWorkRestoresOriginalSeatedCycle() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(
+            .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+            at: origin.addingTimeInterval(30)
+        )
+        _ = engine.handle(.userActivityResumed, at: origin.addingTimeInterval(80))
+
+        XCTAssertEqual(
+            engine.handle(.classifyAway(.countAsWork), at: origin.addingTimeInterval(85)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.phaseStartedAt, origin)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.lastTransitionReason, .classifyAwayAsWork)
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(85)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .required)
+    }
+
+    func testIdleDoesNotOverrideManualMeeting() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.startManualMeeting, at: origin.addingTimeInterval(10))
+
+        XCTAssertEqual(
+            engine.handle(
+                .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+                at: origin.addingTimeInterval(30)
+            ),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.manualMeetingStartedAt, origin.addingTimeInterval(10))
+    }
+
     func testEmergencyActionsRecordDistinctReasons() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)
