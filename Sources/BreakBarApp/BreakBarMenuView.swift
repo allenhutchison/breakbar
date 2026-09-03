@@ -139,7 +139,11 @@ private struct AwayClassificationButtons: View {
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-            classificationButton("Lunch", tone: .lunch, classification: .lunch)
+            classificationButton(
+                model.preferredAwayClassification == .lunch ? "Lunch · Suggested" : "Lunch",
+                tone: .lunch,
+                classification: .lunch
+            )
             classificationButton("Break", tone: .breakTime, classification: .breakTime)
             classificationButton("Other away", tone: .away, classification: .otherAway)
             classificationButton("Count as work", tone: .focus, classification: .countAsWork)

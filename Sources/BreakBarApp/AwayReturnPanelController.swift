@@ -9,16 +9,21 @@ final class AwayReturnPanelController {
 
     func show(
         presentation: BreakBarPresentation,
+        preferredClassification: AwayClassification?,
         classify: @escaping (AwayClassification) -> Void,
         clockOut: @escaping () -> Void
     ) {
         if let panelState {
-            panelState.update(presentation: presentation)
+            panelState.update(
+                presentation: presentation,
+                preferredClassification: preferredClassification
+            )
             return
         }
 
         let panelState = AwayReturnPanelState(
             presentation: presentation,
+            preferredClassification: preferredClassification,
             classify: classify,
             clockOut: clockOut
         )
@@ -86,23 +91,33 @@ private final class AwayReturnPanel: NSPanel {
 @MainActor
 private final class AwayReturnPanelState: ObservableObject {
     @Published private(set) var presentation: BreakBarPresentation
+    @Published private(set) var preferredClassification: AwayClassification?
 
     let classify: (AwayClassification) -> Void
     let clockOut: () -> Void
 
     init(
         presentation: BreakBarPresentation,
+        preferredClassification: AwayClassification?,
         classify: @escaping (AwayClassification) -> Void,
         clockOut: @escaping () -> Void
     ) {
         self.presentation = presentation
+        self.preferredClassification = preferredClassification
         self.classify = classify
         self.clockOut = clockOut
     }
 
-    func update(presentation: BreakBarPresentation) {
-        guard self.presentation != presentation else { return }
-        self.presentation = presentation
+    func update(
+        presentation: BreakBarPresentation,
+        preferredClassification: AwayClassification?
+    ) {
+        if self.presentation != presentation {
+            self.presentation = presentation
+        }
+        if self.preferredClassification != preferredClassification {
+            self.preferredClassification = preferredClassification
+        }
     }
 }
 
@@ -145,7 +160,11 @@ private struct AwayReturnPanelView: View {
                 }
             }
 
-            classificationButton("Lunch", color: lunchAccent) {
+            classificationButton(
+                state.preferredClassification == .lunch ? "Lunch · Suggested" : "Lunch",
+                color: lunchAccent,
+                isDefault: state.preferredClassification == .lunch
+            ) {
                 state.classify(.lunch)
             }
             classificationButton("Break", color: breakAccent) {
@@ -167,18 +186,26 @@ private struct AwayReturnPanelView: View {
         .background(.ultraThinMaterial)
     }
 
+    @ViewBuilder
     private func classificationButton(
         _ title: String,
         color: Color,
+        isDefault: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             Text(title)
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .tint(color)
         .controlSize(.large)
+
+        if isDefault {
+            button.keyboardShortcut(.defaultAction)
+        } else {
+            button
+        }
     }
 
     private var lunchAccent: Color { Color(red: 0.90, green: 0.45, blue: 0.16) }

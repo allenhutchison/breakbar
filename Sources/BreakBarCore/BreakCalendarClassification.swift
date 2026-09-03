@@ -18,6 +18,9 @@ public enum BreakCalendarClassifier {
         if containsPhrase(in: titleText, phrases: ["travel", "commute", "drive"]) {
             return .travel
         }
+        if containsPhrase(in: titleText, phrases: ["lunch"]) {
+            return .lunch
+        }
         if containsPhrase(
             in: allText,
             phrases: ["offsite", "off-site", "onsite", "on-site", "in person", "in-person"]

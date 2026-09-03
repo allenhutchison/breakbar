@@ -2,6 +2,7 @@ import Foundation
 
 public enum BreakCalendarConstraintKind: String, Codable, Equatable, Sendable {
     case meeting
+    case lunch
     case travel
     case offsiteMeeting
 }
@@ -173,7 +174,7 @@ public enum BreakTravelPlanner {
             else {
                 break
             }
-            if event.kind == .meeting {
+            if event.kind == .meeting || event.kind == .lunch {
                 let isLinkedBetweenTravel = events.dropFirst(index + 1).contains {
                     $0.kind == .travel
                         && $0.startAt <= event.endAt.addingTimeInterval(adjacency)
@@ -199,5 +200,49 @@ public enum BreakTravelPlanner {
         at now: Date
     ) -> BreakCalendarConstraintKind? {
         chain.first { $0.startAt <= now && now < $0.endAt }?.kind
+    }
+}
+
+public enum BreakLunchPlanner {
+    public static func promptCandidate(
+        in constraints: [BreakCalendarConstraint],
+        at now: Date
+    ) -> BreakCalendarConstraint? {
+        let activeLunches = constraints
+            .filter { $0.kind == .lunch && $0.startAt <= now && now < $0.endAt }
+            .sorted { $0.startAt < $1.startAt }
+
+        return activeLunches.first { lunch in
+            !constraints.contains { constraint in
+                (constraint.kind == .travel || constraint.kind == .offsiteMeeting)
+                    && intervalsOverlap(lunch, constraint)
+            }
+        }
+    }
+
+    public static func preferredAwayClassification(
+        in constraints: [BreakCalendarConstraint],
+        awayStartedAt: Date,
+        returnedAt: Date
+    ) -> AwayClassification? {
+        let intervalStart = min(awayStartedAt, returnedAt)
+        let intervalEnd = max(awayStartedAt, returnedAt)
+        let overlapping = constraints.filter {
+            $0.startAt < intervalEnd && intervalStart < $0.endAt
+        }
+
+        guard !overlapping.contains(where: {
+            $0.kind == .travel || $0.kind == .offsiteMeeting
+        }) else {
+            return nil
+        }
+        return overlapping.contains(where: { $0.kind == .lunch }) ? .lunch : nil
+    }
+
+    private static func intervalsOverlap(
+        _ lhs: BreakCalendarConstraint,
+        _ rhs: BreakCalendarConstraint
+    ) -> Bool {
+        lhs.startAt < rhs.endAt && rhs.startAt < lhs.endAt
     }
 }
