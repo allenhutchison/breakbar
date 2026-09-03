@@ -291,6 +291,7 @@ final class AppModel: ObservableObject {
             todayHistory = try repository.dailyHistory(on: Date())
             historyMessage = nil
         } catch {
+            todayHistory = nil
             historyMessage = "BreakBar could not load today’s history: \(error.localizedDescription)"
         }
     }
