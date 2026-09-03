@@ -89,7 +89,13 @@ final class BreakSchedulePlannerTests: XCTestCase {
         XCTAssertEqual(plan.meetingEndsAt, active.endAt)
     }
 
-    func testTravelAndOffsiteEventsDoNotAffectBreakPlanning() {
+    func testLunchTravelAndOffsiteEventsDoNotAffectBreakPlanning() {
+        let lunch = BreakCalendarConstraint(
+            id: "lunch",
+            startAt: date(45),
+            endAt: date(80),
+            kind: .lunch
+        )
         let travel = BreakCalendarConstraint(
             id: "travel",
             startAt: date(50),
@@ -107,7 +113,7 @@ final class BreakSchedulePlannerTests: XCTestCase {
             cycleStartedAt: origin,
             now: origin,
             policy: policy,
-            constraints: [travel, offsite]
+            constraints: [lunch, travel, offsite]
         )
 
         XCTAssertEqual(plan.plannedBreakAt, date(60))
@@ -157,9 +163,88 @@ final class BreakSchedulePlannerTests: XCTestCase {
         XCTAssertEqual(chain.map(\.kind), [.travel, .offsiteMeeting, .travel])
     }
 
-    func testCalendarClassifierDistinguishesTravelOffsiteAndVirtualMeetings() {
+    func testLunchBetweenTravelBlocksIsTreatedAsOffsite() throws {
+        let outbound = BreakCalendarConstraint(
+            id: "outbound", startAt: date(600), endAt: date(900), kind: .travel
+        )
+        let lunch = BreakCalendarConstraint(
+            id: "lunch", startAt: date(900), endAt: date(1_500), kind: .lunch
+        )
+        let returnTrip = BreakCalendarConstraint(
+            id: "return", startAt: date(1_500), endAt: date(1_800), kind: .travel
+        )
+
+        let chain = try XCTUnwrap(
+            BreakTravelPlanner.nextChain(in: [outbound, lunch, returnTrip], at: origin)
+        )
+
+        XCTAssertEqual(chain.map(\.kind), [.travel, .offsiteMeeting, .travel])
+    }
+
+    func testActiveLunchProducesPromptCandidate() {
+        let lunch = BreakCalendarConstraint(
+            id: "lunch", startAt: date(10), endAt: date(50), kind: .lunch
+        )
+
+        XCTAssertEqual(
+            BreakLunchPlanner.promptCandidate(in: [lunch], at: date(20)),
+            lunch
+        )
+        XCTAssertNil(BreakLunchPlanner.promptCandidate(in: [lunch], at: date(50)))
+    }
+
+    func testTravelTakesPrecedenceOverLunchPrompt() {
+        let lunch = BreakCalendarConstraint(
+            id: "lunch", startAt: date(10), endAt: date(50), kind: .lunch
+        )
+        let travel = BreakCalendarConstraint(
+            id: "travel", startAt: date(40), endAt: date(80), kind: .travel
+        )
+
+        XCTAssertNil(
+            BreakLunchPlanner.promptCandidate(in: [lunch, travel], at: date(20))
+        )
+    }
+
+    func testLunchOverlapSuggestsAwayClassificationUnlessTravelOverlaps() {
+        let lunch = BreakCalendarConstraint(
+            id: "lunch", startAt: date(20), endAt: date(80), kind: .lunch
+        )
+        let travel = BreakCalendarConstraint(
+            id: "travel", startAt: date(70), endAt: date(100), kind: .travel
+        )
+
+        XCTAssertEqual(
+            BreakLunchPlanner.preferredAwayClassification(
+                in: [lunch],
+                awayStartedAt: date(10),
+                returnedAt: date(90)
+            ),
+            .lunch
+        )
+        XCTAssertNil(
+            BreakLunchPlanner.preferredAwayClassification(
+                in: [lunch, travel],
+                awayStartedAt: date(10),
+                returnedAt: date(90)
+            )
+        )
+    }
+
+    func testCalendarClassifierDistinguishesLunchTravelOffsiteAndVirtualMeetings() {
+        XCTAssertEqual(
+            BreakCalendarClassifier.classify(
+                title: "Lunch with Morgan",
+                location: "500 Market Street"
+            ),
+            .lunch
+        )
         XCTAssertEqual(
             BreakCalendarClassifier.classify(title: "Drive to client office"),
+            .travel
+        )
+        XCTAssertEqual(
+            BreakCalendarClassifier.classify(title: "Drive to lunch"),
             .travel
         )
         XCTAssertEqual(

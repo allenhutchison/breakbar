@@ -25,6 +25,9 @@ final class AppModel: ObservableObject {
     private let overlayController = OverlayController()
     private let breakReturnPanelController = BreakReturnPanelController()
     private let awayReturnPanelController = AwayReturnPanelController()
+    private let activityPromptPanelController = ActivityPromptPanelController()
+    private var clockedOutReturnDetector = ClockedOutReturnDetector()
+    private var clockInPromptRequested = false
     private var ticker: Task<Void, Never>?
     private var observations = Set<AnyCancellable>()
 
@@ -121,6 +124,20 @@ final class AppModel: ObservableObject {
         return (state.minimumBreakEndsAt ?? now) <= now
     }
 
+    var preferredAwayClassification: AwayClassification? {
+        guard state.phase == .awayUnclassified,
+              let awayStartedAt = state.phaseStartedAt,
+              let returnedAt = state.awayReturnDetectedAt
+        else {
+            return nil
+        }
+        return BreakLunchPlanner.preferredAwayClassification(
+            in: calendarMonitor.schedulingConstraints,
+            awayStartedAt: awayStartedAt,
+            returnedAt: returnedAt
+        )
+    }
+
     func performPrimaryAction() {
         switch state.phase {
         case .clockedOut:
@@ -145,12 +162,16 @@ final class AppModel: ObservableObject {
     func clockIn() {
         let eventDate = Date()
         if apply(.clockIn, at: eventDate) == .changed {
+            clockInPromptRequested = false
+            clockedOutReturnDetector.reset()
             applyCurrentCalendarConstraints(at: eventDate)
             applyCurrentCallActivity(at: eventDate)
         }
     }
 
     func clockOut() {
+        clockInPromptRequested = false
+        clockedOutReturnDetector.reset()
         apply(.clockOut)
     }
 
@@ -163,7 +184,16 @@ final class AppModel: ObservableObject {
     }
 
     func startLunch() {
-        apply(.startLunch)
+        let eventDate = Date()
+        let calendarLunch = BreakLunchPlanner.promptCandidate(
+            in: calendarMonitor.schedulingConstraints,
+            at: eventDate
+        )
+        if apply(.startLunch, at: eventDate) == .changed,
+           let calendarLunch
+        {
+            markLunchPromptHandled(calendarLunch)
+        }
     }
 
     func endLunch() {
@@ -374,6 +404,15 @@ final class AppModel: ObservableObject {
         let idleDuration = IdleActivityMonitor.secondsSinceLastInput
         guard idleDuration.isFinite, idleDuration >= 0 else { return .unchanged }
 
+        if clockedOutReturnDetector.update(
+            isClockedOut: state.phase == .clockedOut,
+            idleDuration: idleDuration,
+            idleThreshold: policy.idleThreshold
+        ) {
+            clockInPromptRequested = true
+            return .changed
+        }
+
         if state.phase == .focusing, idleDuration >= policy.idleThreshold {
             return apply(
                 .idleThresholdReached(
@@ -451,6 +490,8 @@ final class AppModel: ObservableObject {
     private static let warningDurationKey = "policy.warningDuration"
     private static let minimumBreakDurationKey = "policy.minimumBreakDuration"
     private static let idleThresholdKey = "policy.idleThreshold"
+    private static let handledLunchPromptOccurrenceKey =
+        "calendar.handledLunchPromptOccurrence"
 
     private static let demoPolicy = BreakPolicy(
         focusDuration: 60,
@@ -615,7 +656,43 @@ final class AppModel: ObservableObject {
         at date: Date,
         bringReturnPanelToFront: Bool = false
     ) {
-        if state.phase == .traveling && state.enforcement == .travelRequired {
+        let lunchPrompt = lunchPromptCandidate(at: date)
+        if let lunchPrompt {
+            overlayController.hide()
+            activityPromptPanelController.show(
+                key: "lunch|\(Self.lunchOccurrenceKey(lunchPrompt))",
+                title: "Lunch is on your calendar",
+                detail: "Start lunch to pause break reminders. Ending lunch begins a fresh focus interval.",
+                symbolName: "fork.knife",
+                accent: NSColor(calibratedRed: 0.90, green: 0.45, blue: 0.16, alpha: 1),
+                primaryTitle: "Start lunch",
+                secondaryTitle: "Keep working",
+                primaryAction: { [weak self] in
+                    self?.acceptCalendarLunch(lunchPrompt)
+                },
+                secondaryAction: { [weak self] in
+                    self?.dismissCalendarLunch(lunchPrompt)
+                }
+            )
+        } else if state.phase == .clockedOut && clockInPromptRequested {
+            activityPromptPanelController.show(
+                key: "clock-in",
+                title: "Ready to work?",
+                detail: "You’re active again while BreakBar is clocked out. Clock in to start tracking focus time.",
+                symbolName: "sun.max.fill",
+                accent: NSColor(calibratedRed: 0.16, green: 0.47, blue: 0.88, alpha: 1),
+                primaryTitle: "Clock in",
+                secondaryTitle: "Not yet",
+                primaryAction: { [weak self] in self?.clockIn() },
+                secondaryAction: { [weak self] in self?.dismissClockInPrompt() }
+            )
+        } else {
+            activityPromptPanelController.hide()
+        }
+
+        if lunchPrompt != nil {
+            overlayController.hide()
+        } else if state.phase == .traveling && state.enforcement == .travelRequired {
             overlayController.showTravel(
                 acknowledge: { [weak self] in self?.acknowledgeTravel() },
                 clockOut: { [weak self] in self?.clockOut() }
@@ -648,6 +725,7 @@ final class AppModel: ObservableObject {
         {
             awayReturnPanelController.show(
                 presentation: BreakBarPresentation(state: state, policy: policy, now: date),
+                preferredClassification: preferredAwayClassification,
                 classify: { [weak self] classification in
                     self?.classifyAway(as: classification)
                 },
@@ -656,6 +734,61 @@ final class AppModel: ObservableObject {
         } else {
             awayReturnPanelController.hide()
         }
+    }
+
+    private func lunchPromptCandidate(at date: Date) -> BreakCalendarConstraint? {
+        guard state.phase == .focusing,
+              state.manualMeetingStartedAt == nil,
+              state.liveCallStartedAt == nil,
+              state.enforcement != .travelWarning,
+              !calendarMonitor.schedulingConstraints.contains(where: {
+                  $0.kind == .meeting && $0.startAt <= date && date < $0.endAt
+              }),
+              let candidate = BreakLunchPlanner.promptCandidate(
+                  in: calendarMonitor.schedulingConstraints,
+                  at: date
+              )
+        else {
+            return nil
+        }
+
+        let handledOccurrence = UserDefaults.standard.string(
+            forKey: Self.handledLunchPromptOccurrenceKey
+        )
+        return handledOccurrence == Self.lunchOccurrenceKey(candidate) ? nil : candidate
+    }
+
+    private func acceptCalendarLunch(_ lunch: BreakCalendarConstraint) {
+        let eventDate = Date()
+        if apply(.startLunch, at: eventDate) == .changed {
+            markLunchPromptHandled(lunch)
+        }
+    }
+
+    private func dismissCalendarLunch(_ lunch: BreakCalendarConstraint) {
+        markLunchPromptHandled(lunch)
+        let eventDate = Date()
+        now = eventDate
+        synchronizeWindows(at: eventDate)
+    }
+
+    private func dismissClockInPrompt() {
+        clockInPromptRequested = false
+        clockedOutReturnDetector.reset()
+        let eventDate = Date()
+        now = eventDate
+        synchronizeWindows(at: eventDate)
+    }
+
+    private func markLunchPromptHandled(_ lunch: BreakCalendarConstraint) {
+        UserDefaults.standard.set(
+            Self.lunchOccurrenceKey(lunch),
+            forKey: Self.handledLunchPromptOccurrenceKey
+        )
+    }
+
+    private static func lunchOccurrenceKey(_ lunch: BreakCalendarConstraint) -> String {
+        "\(lunch.id)|\(lunch.startAt.timeIntervalSinceReferenceDate)"
     }
 
     func refreshLaunchAtLoginStatus() {
