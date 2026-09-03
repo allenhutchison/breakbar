@@ -111,6 +111,13 @@ struct BreakBarMenuView: View {
                 Label("Mac timer", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.secondary)
                 Spacer()
+                Button {
+                    model.showTodayHistory()
+                } label: {
+                    Image(systemName: "chart.bar.xaxis")
+                }
+                .buttonStyle(.plain)
+                .help("Today’s history")
                 SettingsLink { Image(systemName: "gearshape") }
                     .buttonStyle(.plain)
                     .help("Settings")

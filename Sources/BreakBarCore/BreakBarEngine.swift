@@ -152,6 +152,7 @@ public struct BreakBarEngine: Sendable {
         state.breakPlanReason = nil
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.scheduledMeetingStartedAt = nil
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
@@ -173,6 +174,7 @@ public struct BreakBarEngine: Sendable {
         state.breakPlanReason = nil
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.scheduledMeetingStartedAt = nil
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
@@ -187,6 +189,7 @@ public struct BreakBarEngine: Sendable {
         state.enforcement = .none
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.scheduledMeetingStartedAt = nil
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
@@ -275,6 +278,16 @@ public struct BreakBarEngine: Sendable {
             return .changed
         }
         if meetingIsActive(at: now) {
+            if state.scheduledMeetingStartedAt == nil {
+                state.scheduledMeetingStartedAt = max(
+                    state.phaseStartedAt ?? now,
+                    state.calendarMeetingStartsAt ?? now
+                )
+                state.enforcement = .none
+                state.lastTransitionReason = .scheduledMeetingStarted
+                state.revision &+= 1
+                return .changed
+            }
             guard state.enforcement != .none else { return .unchanged }
             state.enforcement = .none
             state.lastTransitionReason = .scheduledMeetingStarted
@@ -314,6 +327,7 @@ public struct BreakBarEngine: Sendable {
         state.breakPlanReason = .nominal
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.scheduledMeetingStartedAt = nil
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil
@@ -402,6 +416,12 @@ public struct BreakBarEngine: Sendable {
         if calendarMeetingIsActive || state.liveCallStartedAt != nil {
             candidate.enforcement = .none
         }
+        if calendarMeetingIsActive, candidate.scheduledMeetingStartedAt == nil {
+            candidate.scheduledMeetingStartedAt = max(
+                cycleStartedAt,
+                calendarMeetingStartsAt ?? now
+            )
+        }
         guard candidate != state else { return .unchanged }
         candidate.lastTransitionReason = calendarMeetingIsActive
             ? .scheduledMeetingStarted
@@ -424,6 +444,7 @@ public struct BreakBarEngine: Sendable {
             ?? now
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.scheduledMeetingStartedAt = nil
         state.enforcement = .none
         if now >= nominalDueAt {
             state.focusDueAt = now.addingTimeInterval(policy.warningDuration)
@@ -471,6 +492,7 @@ public struct BreakBarEngine: Sendable {
         if let meetingEndsAt = state.calendarMeetingEndsAt, now >= meetingEndsAt {
             state.calendarMeetingStartsAt = nil
             state.calendarMeetingEndsAt = nil
+            state.scheduledMeetingStartedAt = nil
         }
         let nominalDueAt = state.nominalFocusDueAt
             ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
@@ -652,6 +674,7 @@ public struct BreakBarEngine: Sendable {
         state.breakPlanReason = nil
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
+        state.scheduledMeetingStartedAt = nil
         state.liveCallStartedAt = nil
         state.liveCallBundleIdentifier = nil
         state.liveCallConfidence = nil

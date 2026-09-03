@@ -76,6 +76,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var breakPlanReason: BreakPlanReason?
     public var calendarMeetingStartsAt: Date?
     public var calendarMeetingEndsAt: Date?
+    public var scheduledMeetingStartedAt: Date?
     public var liveCallStartedAt: Date?
     public var liveCallBundleIdentifier: String?
     public var liveCallConfidence: BreakCallConfidence?
@@ -96,6 +97,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         breakPlanReason: BreakPlanReason? = nil,
         calendarMeetingStartsAt: Date? = nil,
         calendarMeetingEndsAt: Date? = nil,
+        scheduledMeetingStartedAt: Date? = nil,
         liveCallStartedAt: Date? = nil,
         liveCallBundleIdentifier: String? = nil,
         liveCallConfidence: BreakCallConfidence? = nil,
@@ -115,6 +117,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.breakPlanReason = breakPlanReason
         self.calendarMeetingStartsAt = calendarMeetingStartsAt
         self.calendarMeetingEndsAt = calendarMeetingEndsAt
+        self.scheduledMeetingStartedAt = scheduledMeetingStartedAt
         self.liveCallStartedAt = liveCallStartedAt
         self.liveCallBundleIdentifier = liveCallBundleIdentifier
         self.liveCallConfidence = liveCallConfidence
