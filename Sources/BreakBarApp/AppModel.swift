@@ -25,6 +25,7 @@ final class AppModel: ObservableObject {
     private var engine: BreakBarEngine
     private let repository: SessionRepository?
     private let overlayController = OverlayController()
+    private let todayHistoryWindowController = TodayHistoryWindowController()
     private let breakReturnPanelController = BreakReturnPanelController()
     private let awayReturnPanelController = AwayReturnPanelController()
     private let activityPromptPanelController = ActivityPromptPanelController()
@@ -283,6 +284,11 @@ final class AppModel: ObservableObject {
 
     func refreshTodayHistory() {
         refreshTodayHistory(at: Date())
+    }
+
+    func showTodayHistory() {
+        refreshTodayHistory()
+        todayHistoryWindowController.show(model: self)
     }
 
     private func refreshTodayHistory(at date: Date) {

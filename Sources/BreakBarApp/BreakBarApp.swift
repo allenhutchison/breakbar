@@ -10,11 +10,6 @@ struct BreakBarApp: App {
     }
 
     var body: some Scene {
-        Window("Today", id: "today-history") {
-            TodayHistoryView(model: appDelegate.model)
-        }
-        .defaultSize(width: 620, height: 620)
-
         Settings {
             SettingsView(model: appDelegate.model)
         }

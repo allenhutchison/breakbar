@@ -3,7 +3,6 @@ import SwiftUI
 
 struct BreakBarMenuView: View {
     @ObservedObject var model: AppModel
-    @Environment(\.openWindow) private var openWindow
 
     private var palette: BreakPalette {
         BreakPalette(tone: model.presentation.tone)
@@ -113,9 +112,7 @@ struct BreakBarMenuView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
-                    model.refreshTodayHistory()
-                    openWindow(id: "today-history")
-                    NSApplication.shared.activate(ignoringOtherApps: true)
+                    model.showTodayHistory()
                 } label: {
                     Image(systemName: "chart.bar.xaxis")
                 }
