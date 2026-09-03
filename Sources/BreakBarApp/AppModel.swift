@@ -759,8 +759,10 @@ final class AppModel: ObservableObject {
     }
 
     private func acceptCalendarLunch(_ lunch: BreakCalendarConstraint) {
-        markLunchPromptHandled(lunch)
-        startLunch()
+        let eventDate = Date()
+        if apply(.startLunch, at: eventDate) == .changed {
+            markLunchPromptHandled(lunch)
+        }
     }
 
     private func dismissCalendarLunch(_ lunch: BreakCalendarConstraint) {
