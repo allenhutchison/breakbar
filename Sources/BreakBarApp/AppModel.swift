@@ -282,13 +282,17 @@ final class AppModel: ObservableObject {
     }
 
     func refreshTodayHistory() {
+        refreshTodayHistory(at: Date())
+    }
+
+    private func refreshTodayHistory(at date: Date) {
         guard let repository else {
             todayHistory = nil
             historyMessage = "The history database is unavailable."
             return
         }
         do {
-            todayHistory = try repository.dailyHistory(on: Date())
+            todayHistory = try repository.dailyHistory(on: date)
             historyMessage = nil
         } catch {
             todayHistory = nil
@@ -397,6 +401,9 @@ final class AppModel: ObservableObject {
         let callResult = applyCurrentCallActivity(at: eventDate)
         let idleResult = updateIdleState(at: eventDate)
         let timerResult = apply(.tick, at: eventDate, publishTime: false)
+        if let todayHistory, !todayHistory.contains(eventDate) {
+            refreshTodayHistory(at: eventDate)
+        }
         let nextText = BreakBarPresentation(
             state: state,
             policy: policy,

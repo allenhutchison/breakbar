@@ -106,6 +106,10 @@ public struct DailyHistory: Equatable, Sendable {
         max(day.start, interval.startedAt)
     }
 
+    public func contains(_ date: Date) -> Bool {
+        day.start <= date && date < day.end
+    }
+
     public func clippedEnd(for interval: ActivityHistoryInterval, at now: Date) -> Date {
         min(day.end, interval.endedAt ?? now)
     }

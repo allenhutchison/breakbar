@@ -622,6 +622,43 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testDailyHistoryRollsOpenMeetingIntoNextLocalDay() throws {
+        try withRepository { repository, _ in
+            let day = utcCalendar.date(
+                from: DateComponents(year: 2026, month: 9, day: 3)
+            )!
+            let nextDay = utcCalendar.date(byAdding: .day, value: 1, to: day)!
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: day)
+            try commit(
+                .clockIn,
+                at: day.addingTimeInterval(23 * 3_600 + 50 * 60),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .startManualMeeting,
+                at: day.addingTimeInterval(23 * 3_600 + 55 * 60),
+                engine: &engine,
+                repository: repository
+            )
+
+            let history = try repository.dailyHistory(
+                on: nextDay.addingTimeInterval(10 * 60),
+                calendar: utcCalendar
+            )
+            let summary = history.summary(at: nextDay.addingTimeInterval(10 * 60))
+
+            XCTAssertFalse(history.contains(day.addingTimeInterval(23 * 3_600 + 59 * 60)))
+            XCTAssertTrue(history.contains(nextDay))
+            XCTAssertFalse(history.contains(history.day.end))
+            XCTAssertEqual(history.intervals.map(\.kind), [.meeting])
+            XCTAssertEqual(summary.clockedIn, 10 * 60)
+            XCTAssertEqual(summary.meetings, 10 * 60)
+            XCTAssertEqual(summary.focus, 0)
+        }
+    }
+
     func testStaleTransitionRollsBackWithoutChangingHistory() throws {
         try withRepository { repository, _ in
             var engine = BreakBarEngine(policy: policy)
