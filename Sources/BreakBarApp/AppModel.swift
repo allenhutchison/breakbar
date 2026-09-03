@@ -15,6 +15,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var acceptedCallSignal: BreakCallSignal?
     @Published private(set) var allowUncorrelatedBrowserCalls: Bool
     @Published private(set) var policy: BreakPolicy
+    @Published private(set) var todayHistory: DailyHistory?
+    @Published private(set) var historyMessage: String?
 
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
@@ -55,10 +57,21 @@ final class AppModel: ObservableObject {
             startupMessage = "BreakBar could not open its history database: \(error.localizedDescription)"
         }
 
+        let initialNow = Date()
+        var initialHistory: DailyHistory?
+        var initialHistoryMessage: String?
+        if let loadedRepository {
+            do {
+                initialHistory = try loadedRepository.dailyHistory(on: initialNow)
+            } catch {
+                initialHistoryMessage = "BreakBar could not load today’s history: \(error.localizedDescription)"
+            }
+        }
+
         repository = loadedRepository
         engine = BreakBarEngine(state: restored, policy: initialPolicy)
         state = engine.state
-        now = Date()
+        now = initialNow
         lastMessage = startupMessage
         launchAtLoginRequested = false
         launchAtLoginMessage = nil
@@ -66,6 +79,8 @@ final class AppModel: ObservableObject {
         allowUncorrelatedBrowserCalls = UserDefaults.standard.bool(
             forKey: Self.allowUncorrelatedBrowserCallsKey
         )
+        todayHistory = initialHistory
+        historyMessage = initialHistoryMessage
         refreshLaunchAtLoginStatus()
 
         calendarMonitor.$schedulingConstraints
@@ -264,6 +279,20 @@ final class AppModel: ObservableObject {
 
     func clearMessage() {
         lastMessage = nil
+    }
+
+    func refreshTodayHistory() {
+        guard let repository else {
+            todayHistory = nil
+            historyMessage = "The history database is unavailable."
+            return
+        }
+        do {
+            todayHistory = try repository.dailyHistory(on: Date())
+            historyMessage = nil
+        } catch {
+            historyMessage = "BreakBar could not load today’s history: \(error.localizedDescription)"
+        }
     }
 
     func quit() {
@@ -623,6 +652,7 @@ final class AppModel: ObservableObject {
             engine = candidate
             state = candidate.state
             lastMessage = nil
+            refreshTodayHistory()
         }
         if previousState.enforcement != .warning && state.enforcement == .warning {
             WarningNotifier.deliver(

@@ -59,7 +59,7 @@ final class SessionRepositoryTests: XCTestCase {
             ([(.clockIn, 0), (.tick, 60)], 1),
             ([(.clockIn, 0), (.startBreak, 60)], 2),
             ([(.clockIn, 0), (.startLunch, 30)], 2),
-            ([(.clockIn, 0), (.startManualMeeting, 30)], 1),
+            ([(.clockIn, 0), (.startManualMeeting, 30)], 2),
             ([
                 (.clockIn, 0),
                 (.idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)), 30),
@@ -441,7 +441,7 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
-    func testLiveCallPersistsWithoutSplittingFocusHistory() throws {
+    func testLiveCallSplitsMeetingHistoryFromFocus() throws {
         try withRepository { repository, databaseURL in
             var engine = BreakBarEngine(policy: policy)
             try repository.bootstrapIfNeeded(state: engine.state, at: origin)
@@ -463,8 +463,162 @@ final class SessionRepositoryTests: XCTestCase {
             XCTAssertEqual(recovered.liveCallStartedAt, origin.addingTimeInterval(10))
             XCTAssertEqual(recovered.liveCallBundleIdentifier, "us.zoom.xos")
             XCTAssertEqual(recovered.liveCallConfidence, .dedicatedApplication)
-            XCTAssertEqual(try reopened.stats().totalIntervals, 1)
+            XCTAssertEqual(try reopened.stats().totalIntervals, 2)
             XCTAssertEqual(try reopened.stats().openIntervals, 1)
+            XCTAssertEqual(try reopened.stats().focusIntervals, 1)
+            XCTAssertEqual(try reopened.stats().meetingIntervals, 1)
+
+            try commit(
+                .updateCallActivity(nil),
+                at: origin.addingTimeInterval(30),
+                engine: &engine,
+                repository: repository
+            )
+            XCTAssertEqual(try repository.stats().totalIntervals, 3)
+            XCTAssertEqual(try repository.stats().focusIntervals, 2)
+            XCTAssertEqual(try repository.stats().meetingIntervals, 1)
+        }
+    }
+
+    func testScheduledMeetingSplitsAtCalendarBoundaries() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let meeting = BreakCalendarConstraint(
+                id: "meeting",
+                startAt: origin.addingTimeInterval(50),
+                endAt: origin.addingTimeInterval(90)
+            )
+            try commit(
+                .updateCalendarConstraints([meeting]),
+                at: origin,
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .tick,
+                at: origin.addingTimeInterval(50),
+                engine: &engine,
+                repository: repository
+            )
+            XCTAssertEqual(engine.state.scheduledMeetingStartedAt, origin.addingTimeInterval(50))
+
+            try commit(
+                .tick,
+                at: origin.addingTimeInterval(91),
+                engine: &engine,
+                repository: repository
+            )
+
+            let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(history.intervals.map(\.kind), [.focus, .meeting, .focus])
+            XCTAssertEqual(history.intervals[0].endedAt, origin.addingTimeInterval(50))
+            XCTAssertEqual(history.intervals[1].startedAt, origin.addingTimeInterval(50))
+            XCTAssertEqual(history.intervals[1].endedAt, origin.addingTimeInterval(90))
+            XCTAssertEqual(history.intervals[2].startedAt, origin.addingTimeInterval(90))
+        }
+    }
+
+    func testLegacyActiveCallSnapshotRepairsFocusLedgerWhenCallEnds() throws {
+        try withRepository { repository, _ in
+            let callStartedAt = origin.addingTimeInterval(10)
+            let legacyState = BreakBarState(
+                phase: .focusing,
+                phaseStartedAt: origin,
+                nominalFocusDueAt: origin.addingTimeInterval(60),
+                focusDueAt: origin.addingTimeInterval(60),
+                breakPlanReason: .nominal,
+                liveCallStartedAt: callStartedAt,
+                liveCallBundleIdentifier: "us.zoom.xos",
+                liveCallConfidence: .dedicatedApplication,
+                revision: 2
+            )
+            try repository.bootstrapIfNeeded(state: legacyState, at: origin)
+            var engine = BreakBarEngine(state: legacyState, policy: policy)
+
+            try commit(
+                .updateCallActivity(nil),
+                at: origin.addingTimeInterval(30),
+                engine: &engine,
+                repository: repository
+            )
+
+            let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(history.intervals.map(\.kind), [.focus, .meeting, .focus])
+            XCTAssertEqual(history.intervals[0].endedAt, callStartedAt)
+            XCTAssertEqual(history.intervals[1].startedAt, callStartedAt)
+            XCTAssertEqual(history.intervals[1].endedAt, origin.addingTimeInterval(30))
+        }
+    }
+
+    func testDailyHistoryClipsIntervalsAtMidnightAndCalculatesTotals() throws {
+        try withRepository { repository, _ in
+            let day = utcCalendar.date(
+                from: DateComponents(year: 2026, month: 9, day: 3)
+            )!
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(
+                state: engine.state,
+                at: day.addingTimeInterval(-600)
+            )
+            try commit(
+                .clockIn,
+                at: day.addingTimeInterval(-600),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .startBreak,
+                at: day.addingTimeInterval(600),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .returnToFocus,
+                at: day.addingTimeInterval(1_200),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .clockOut,
+                at: day.addingTimeInterval(1_800),
+                engine: &engine,
+                repository: repository
+            )
+
+            let history = try repository.dailyHistory(on: day, calendar: utcCalendar)
+            let summary = history.summary(at: day.addingTimeInterval(3_600))
+
+            XCTAssertEqual(history.sessions.count, 1)
+            XCTAssertEqual(history.intervals.map(\.kind), [.focus, .breakTime, .focus])
+            XCTAssertEqual(history.clippedStart(for: history.intervals[0]), day)
+            XCTAssertEqual(summary.clockedIn, 1_800)
+            XCTAssertEqual(summary.working, 1_200)
+            XCTAssertEqual(summary.focus, 1_200)
+            XCTAssertEqual(summary.breaks, 600)
+            XCTAssertEqual(summary.meetings, 0)
+        }
+    }
+
+    func testDailyHistoryUsesNowForOpenSessionAndInterval() throws {
+        try withRepository { repository, _ in
+            let day = utcCalendar.date(
+                from: DateComponents(year: 2026, month: 9, day: 3)
+            )!
+            let clockIn = day.addingTimeInterval(9 * 3_600)
+            let now = clockIn.addingTimeInterval(3_600)
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: clockIn)
+            try commit(.clockIn, at: clockIn, engine: &engine, repository: repository)
+
+            let history = try repository.dailyHistory(on: day, calendar: utcCalendar)
+            let summary = history.summary(at: now)
+
+            XCTAssertNil(history.sessions[0].endedAt)
+            XCTAssertNil(history.intervals[0].endedAt)
+            XCTAssertEqual(summary.clockedIn, 3_600)
+            XCTAssertEqual(summary.focus, 3_600)
         }
     }
 
@@ -520,6 +674,12 @@ final class SessionRepositoryTests: XCTestCase {
         let databaseURL = directory.appendingPathComponent("breakbar.sqlite")
         let repository = try SessionRepository(url: databaseURL)
         try body(repository, databaseURL)
+    }
+
+    private var utcCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        return calendar
     }
 
     private func createVersionOneDatabase(at url: URL) throws {

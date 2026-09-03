@@ -44,6 +44,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         model.calendarMonitor.refresh()
     }
 
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: compactStatusItemWidth)
         guard let button = item.button else { return }

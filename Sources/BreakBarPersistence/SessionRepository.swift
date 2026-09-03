@@ -292,8 +292,10 @@ public final class SessionRepository {
                 try closeOpenInterval(at: date)
                 try closeOpenSession(at: date)
 
-            case (.focusing, .focusing),
-                 (.onBreak, .onBreak),
+            case (.focusing, .focusing):
+                try reconcileMeetingInterval(from: previous, to: next, at: date)
+
+            case (.onBreak, .onBreak),
                  (.onLunch, .onLunch),
                  (.awayUnclassified, .awayUnclassified),
                  (.traveling, .traveling),
@@ -325,6 +327,78 @@ public final class SessionRepository {
             travelIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'travel'"),
             meetingIntervals: try count("SELECT COUNT(*) FROM intervals WHERE kind = 'meeting'")
         )
+    }
+
+    public func dailyHistory(
+        on date: Date,
+        calendar: Calendar = .current
+    ) throws -> DailyHistory {
+        guard let day = calendar.dateInterval(of: .day, for: date) else {
+            throw SessionRepositoryError.sqlite("Could not determine the selected calendar day.")
+        }
+
+        let sessions: [WorkSessionHistory] = try withStatement(
+            """
+            SELECT id, started_at_utc, ended_at_utc
+            FROM work_sessions
+            WHERE started_at_utc < ?
+              AND (ended_at_utc IS NULL OR ended_at_utc > ?)
+            ORDER BY started_at_utc, id
+            """
+        ) { statement in
+            try bind(day.end, to: statement, at: 1)
+            try bind(day.start, to: statement, at: 2)
+            var rows: [WorkSessionHistory] = []
+            var result = sqlite3_step(statement)
+            while result == SQLITE_ROW {
+                rows.append(
+                    WorkSessionHistory(
+                        id: String(cString: sqlite3_column_text(statement, 0)),
+                        startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+                        endedAt: optionalDate(in: statement, at: 2)
+                    )
+                )
+                result = sqlite3_step(statement)
+            }
+            guard result == SQLITE_DONE else { throw lastError() }
+            return rows
+        }
+
+        let intervals: [ActivityHistoryInterval] = try withStatement(
+            """
+            SELECT id, session_id, kind, started_at_utc, ended_at_utc, source
+            FROM intervals
+            WHERE started_at_utc < ?
+              AND (ended_at_utc IS NULL OR ended_at_utc > ?)
+            ORDER BY started_at_utc, id
+            """
+        ) { statement in
+            try bind(day.end, to: statement, at: 1)
+            try bind(day.start, to: statement, at: 2)
+            var rows: [ActivityHistoryInterval] = []
+            var result = sqlite3_step(statement)
+            while result == SQLITE_ROW {
+                let rawKind = String(cString: sqlite3_column_text(statement, 2))
+                guard let kind = ActivityKind(rawValue: rawKind) else {
+                    throw SessionRepositoryError.sqlite("Unknown activity kind: \(rawKind)")
+                }
+                rows.append(
+                    ActivityHistoryInterval(
+                        id: String(cString: sqlite3_column_text(statement, 0)),
+                        sessionID: String(cString: sqlite3_column_text(statement, 1)),
+                        kind: kind,
+                        startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+                        endedAt: optionalDate(in: statement, at: 4),
+                        source: String(cString: sqlite3_column_text(statement, 5))
+                    )
+                )
+                result = sqlite3_step(statement)
+            }
+            guard result == SQLITE_DONE else { throw lastError() }
+            return rows
+        }
+
+        return DailyHistory(day: day, sessions: sessions, intervals: intervals)
     }
 
     private func migrate() throws {
@@ -514,6 +588,20 @@ public final class SessionRepository {
             throw SessionRepositoryError.unsupportedTransition(from: phase, to: phase)
         }
 
+        try insertInterval(
+            sessionID: sessionID,
+            kind: kind,
+            startedAt: startedAt,
+            minimumSatisfiedAt: minimumSatisfiedAt
+        )
+    }
+
+    private func insertInterval(
+        sessionID: String,
+        kind: String,
+        startedAt: Date,
+        minimumSatisfiedAt: Date?
+    ) throws {
         try withStatement(
             """
             INSERT INTO intervals
@@ -529,6 +617,114 @@ public final class SessionRepository {
             try bind(Date(), to: statement, at: 6)
             try stepDone(statement)
         }
+    }
+
+    private func reconcileMeetingInterval(
+        from previous: BreakBarState,
+        to next: BreakBarState,
+        at date: Date
+    ) throws {
+        let endedScheduledMeeting = next.lastTransitionReason == .scheduledMeetingEnded
+            && previous.calendarMeetingStartsAt != nil
+        let wasMeeting = Self.isMeeting(previous) || endedScheduledMeeting
+        let isMeeting = Self.isMeeting(next)
+        guard wasMeeting != isMeeting else { return }
+
+        let openInterval: (kind: String, startedAt: Date)? = try queryOne(
+            "SELECT kind, started_at_utc FROM intervals WHERE ended_at_utc IS NULL"
+        ) { statement in
+            (
+                String(cString: sqlite3_column_text(statement, 0)),
+                Date(timeIntervalSince1970: sqlite3_column_double(statement, 1))
+            )
+        }
+        guard let openInterval else { throw SessionRepositoryError.missingOpenInterval }
+
+        let expectedCurrentKind = wasMeeting ? "meeting" : "focus"
+        if openInterval.kind != expectedCurrentKind {
+            if wasMeeting, !isMeeting, openInterval.kind == "focus" {
+                try splitLegacyFocusInterval(
+                    openIntervalStartedAt: openInterval.startedAt,
+                    meetingStartedAt: Self.meetingStartedAt(in: previous) ?? date,
+                    meetingEndedAt: previous.calendarMeetingEndsAt ?? date,
+                    transitionDate: date
+                )
+                return
+            }
+            if !wasMeeting, isMeeting, openInterval.kind == "meeting" {
+                return
+            }
+            throw SessionRepositoryError.sqlite(
+                "The open activity interval does not match the recoverable timer state."
+            )
+        }
+
+        let proposedBoundary: Date
+        if isMeeting {
+            proposedBoundary = next.manualMeetingStartedAt
+                ?? next.liveCallStartedAt
+                ?? next.scheduledMeetingStartedAt
+                ?? date
+        } else if previous.manualMeetingStartedAt != nil
+                    || previous.liveCallStartedAt != nil
+        {
+            proposedBoundary = date
+        } else {
+            proposedBoundary = previous.calendarMeetingEndsAt ?? date
+        }
+        let boundary = min(date, max(openInterval.startedAt, proposedBoundary))
+        let sessionID = try openSessionID()
+        try closeOpenInterval(at: boundary)
+        try insertInterval(
+            sessionID: sessionID,
+            kind: isMeeting ? "meeting" : "focus",
+            startedAt: boundary,
+            minimumSatisfiedAt: nil
+        )
+    }
+
+    private static func isMeeting(_ state: BreakBarState) -> Bool {
+        state.manualMeetingStartedAt != nil
+            || state.liveCallStartedAt != nil
+            || state.scheduledMeetingStartedAt != nil
+    }
+
+    private static func meetingStartedAt(in state: BreakBarState) -> Date? {
+        [
+            state.manualMeetingStartedAt,
+            state.liveCallStartedAt,
+            state.scheduledMeetingStartedAt,
+            state.calendarMeetingStartsAt,
+        ]
+        .compactMap { $0 }
+        .min()
+    }
+
+    private func splitLegacyFocusInterval(
+        openIntervalStartedAt: Date,
+        meetingStartedAt: Date,
+        meetingEndedAt: Date,
+        transitionDate: Date
+    ) throws {
+        let sessionID = try openSessionID()
+        let start = min(transitionDate, max(openIntervalStartedAt, meetingStartedAt))
+        let end = min(transitionDate, max(start, meetingEndedAt))
+        guard start < end else { return }
+
+        try closeOpenInterval(at: start)
+        try insertInterval(
+            sessionID: sessionID,
+            kind: "meeting",
+            startedAt: start,
+            minimumSatisfiedAt: nil
+        )
+        try closeOpenInterval(at: end)
+        try insertInterval(
+            sessionID: sessionID,
+            kind: "focus",
+            startedAt: end,
+            minimumSatisfiedAt: nil
+        )
     }
 
     private func openSessionID() throws -> String {
@@ -716,6 +912,11 @@ public final class SessionRepository {
             sqlite3_bind_blob(statement, index, bytes.baseAddress, Int32(bytes.count), sqliteTransient)
         }
         guard result == SQLITE_OK else { throw lastError() }
+    }
+
+    private func optionalDate(in statement: OpaquePointer, at index: Int32) -> Date? {
+        guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
+        return Date(timeIntervalSince1970: sqlite3_column_double(statement, index))
     }
 
     private func lastError() -> SessionRepositoryError {
