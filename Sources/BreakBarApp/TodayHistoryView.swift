@@ -248,15 +248,28 @@ private struct SessionRow: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            "\(title), \(timeRange), \(DurationText.spoken(end.timeIntervalSince(start)))"
-        )
+        .accessibilityLabel(accessibilityDescription)
     }
 
     private var timeRange: String {
         let startText = session.startedAt.formatted(date: .omitted, time: .shortened)
         let endText = session.endedAt?.formatted(date: .omitted, time: .shortened) ?? "Now"
         return "\(startText) – \(endText)"
+    }
+
+    private var accessibilityDescription: String {
+        let start = max(history.day.start, session.startedAt)
+        let end = min(history.day.end, session.endedAt ?? now)
+        var components = [title]
+        if session.endedAt == nil {
+            components.append("active")
+        }
+        if session.wasCorrected {
+            components.append("edited")
+        }
+        components.append(timeRange)
+        components.append(DurationText.spoken(end.timeIntervalSince(start)))
+        return components.joined(separator: ", ")
     }
 }
 
