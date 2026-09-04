@@ -63,6 +63,32 @@ public struct BreakBarEngine: Sendable {
             beginFocus(at: now, reason: .returnHome)
             return .changed
 
+        case let .correctClockIn(
+            previousStartedAt,
+            correctedStartedAt,
+            adjustsCurrentFocusCycle
+        ):
+            guard state.phase != .clockedOut,
+                  correctedStartedAt < now
+            else { return .unchanged }
+
+            if state.phase == .focusing,
+               adjustsCurrentFocusCycle || state.phaseStartedAt == previousStartedAt
+            {
+                let nominalDueAt = correctedStartedAt.addingTimeInterval(policy.focusDuration)
+                state.phaseStartedAt = correctedStartedAt
+                state.nominalFocusDueAt = nominalDueAt
+                state.focusDueAt = nominalDueAt
+                state.breakPlanReason = .nominal
+                state.enforcement = .none
+            }
+            if state.awayPreviousFocusStartedAt == previousStartedAt {
+                state.awayPreviousFocusStartedAt = correctedStartedAt
+            }
+            state.lastTransitionReason = .correctClockIn
+            state.revision &+= 1
+            return .changed
+
         case .startLunch:
             guard state.phase == .focusing else { return .unchanged }
             beginLunch(at: now)

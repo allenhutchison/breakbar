@@ -3,7 +3,7 @@ import SwiftUI
 
 struct TodayHistoryView: View {
     @ObservedObject var model: AppModel
-    @State private var intervalToEdit: ActivityHistoryInterval?
+    @State private var historyEditor: HistoryEditor?
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -47,6 +47,40 @@ struct TodayHistoryView: View {
                     SummaryCard(title: "Away", duration: summary.away, color: .gray)
                 }
 
+                if !history.sessions.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Work sessions")
+                            .font(.title3.weight(.semibold))
+
+                        VStack(spacing: 0) {
+                            ForEach(Array(history.sessions.enumerated()), id: \.element.id) { index, session in
+                                Button {
+                                    historyEditor = .session(session)
+                                } label: {
+                                    SessionRow(
+                                        title: sessionTitle(index: index, count: history.sessions.count),
+                                        session: session,
+                                        history: history,
+                                        now: model.now,
+                                        showsEditIndicator: true
+                                    )
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityHint(
+                                    session.endedAt == nil
+                                        ? "Edit the clock-in time"
+                                        : "Edit clock-in and clock-out times"
+                                )
+                                if index < history.sessions.count - 1 {
+                                    Divider().padding(.leading, 42)
+                                }
+                            }
+                        }
+                        .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Timeline")
                         .font(.title3.weight(.semibold))
@@ -70,7 +104,7 @@ struct TodayHistoryView: View {
                                     )
                                 } else {
                                     Button {
-                                        intervalToEdit = interval
+                                        historyEditor = .interval(interval)
                                     } label: {
                                         TimelineRow(
                                             interval: interval,
@@ -95,8 +129,13 @@ struct TodayHistoryView: View {
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(item: $intervalToEdit) { interval in
-            HistoryCorrectionView(model: model, interval: interval)
+        .sheet(item: $historyEditor) { editor in
+            switch editor {
+            case let .interval(interval):
+                HistoryCorrectionView(model: model, interval: interval)
+            case let .session(session):
+                SessionCorrectionView(model: model, session: session)
+            }
         }
     }
 
@@ -114,6 +153,22 @@ struct TodayHistoryView: View {
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
+        }
+    }
+
+    private func sessionTitle(index: Int, count: Int) -> String {
+        count == 1 ? "Work session" : "Work session \(index + 1)"
+    }
+}
+
+private enum HistoryEditor: Identifiable {
+    case interval(ActivityHistoryInterval)
+    case session(WorkSessionHistory)
+
+    var id: String {
+        switch self {
+        case let .interval(interval): "interval-\(interval.id)"
+        case let .session(session): "session-\(session.id)"
         }
     }
 }
@@ -138,6 +193,70 @@ private struct SummaryCard: View {
         .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title), \(DurationText.spoken(duration))")
+    }
+}
+
+private struct SessionRow: View {
+    let title: String
+    let session: WorkSessionHistory
+    let history: DailyHistory
+    let now: Date
+    let showsEditIndicator: Bool
+
+    var body: some View {
+        let start = max(history.day.start, session.startedAt)
+        let end = min(history.day.end, session.endedAt ?? now)
+
+        HStack(spacing: 12) {
+            Image(systemName: "clock.badge.checkmark")
+                .foregroundStyle(.primary)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 7) {
+                    Text(title)
+                        .font(.body.weight(.medium))
+                    if session.endedAt == nil {
+                        Text("NOW")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.blue)
+                    }
+                    if session.wasCorrected {
+                        Text("EDITED")
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(timeRange)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            Text(DurationText.compact(end.timeIntervalSince(start)))
+                .font(.system(.body, design: .monospaced).weight(.medium))
+                .frame(minWidth: 58, alignment: .trailing)
+
+            if showsEditIndicator {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .frame(width: 10)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 11)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(title), \(timeRange), \(DurationText.spoken(end.timeIntervalSince(start)))"
+        )
+    }
+
+    private var timeRange: String {
+        let startText = session.startedAt.formatted(date: .omitted, time: .shortened)
+        let endText = session.endedAt?.formatted(date: .omitted, time: .shortened) ?? "Now"
+        return "\(startText) – \(endText)"
     }
 }
 
@@ -204,6 +323,98 @@ private struct TimelineRow: View {
             : end.formatted(date: .omitted, time: .shortened)
         return "\(startText) – \(endText)"
     }
+}
+
+private struct SessionCorrectionView: View {
+    @ObservedObject var model: AppModel
+    let session: WorkSessionHistory
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var startedAt: Date
+    @State private var endedAt: Date
+    @State private var errorMessage: String?
+
+    init(model: AppModel, session: WorkSessionHistory) {
+        self.model = model
+        self.session = session
+        _startedAt = State(initialValue: session.startedAt)
+        _endedAt = State(initialValue: session.endedAt ?? session.startedAt)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Edit work session")
+                    .font(.title2.weight(.semibold))
+                Text(
+                    isActive
+                        ? "Update when this active work session began."
+                        : "The first and last activity will be adjusted to match these times."
+                )
+                    .foregroundStyle(.secondary)
+            }
+
+            Form {
+                DatePicker(
+                    "Clocked in",
+                    selection: $startedAt,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                if isActive {
+                    LabeledContent("Clocked out", value: "Now")
+                } else {
+                    DatePicker(
+                        "Clocked out",
+                        selection: $endedAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                }
+            }
+            .formStyle(.grouped)
+
+            if let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button("Save") {
+                    save()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(isActive ? startedAt >= model.now : startedAt >= endedAt)
+            }
+        }
+        .padding(24)
+        .frame(width: 460)
+    }
+
+    private func save() {
+        do {
+            if isActive {
+                try model.correctActiveWorkSessionClockIn(session, startedAt: startedAt)
+            } else {
+                try model.correctWorkSession(
+                    session,
+                    startedAt: startedAt,
+                    endedAt: endedAt
+                )
+            }
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private var isActive: Bool { session.endedAt == nil }
 }
 
 private struct HistoryCorrectionView: View {

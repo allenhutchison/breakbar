@@ -121,20 +121,6 @@ final class AppModel: ObservableObject {
         BreakBarPresentation(state: state, policy: policy, now: now)
     }
 
-    var menuBarSymbol: String {
-        switch presentation.tone {
-        case .neutral: "figure.stand"
-        case .focus: "timer"
-        case .meeting: "video.fill"
-        case .warning: "exclamationmark.circle.fill"
-        case .required: "figure.walk.motion"
-        case .breakTime: "cup.and.heat.waves.fill"
-        case .lunch: "fork.knife"
-        case .away: "figure.walk"
-        case .travel: "car.fill"
-        }
-    }
-
     var canReturnEarly: Bool {
         guard state.phase == .onBreak else { return false }
         return (state.minimumBreakEndsAt ?? now) <= now
@@ -302,6 +288,71 @@ final class AppModel: ObservableObject {
             endedAt: endedAt
         )
         refreshTodayHistory()
+    }
+
+    func correctWorkSession(
+        _ session: WorkSessionHistory,
+        startedAt: Date,
+        endedAt: Date
+    ) throws {
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        try repository.correctWorkSession(
+            id: session.id,
+            startedAt: startedAt,
+            endedAt: endedAt
+        )
+        refreshTodayHistory()
+    }
+
+    func correctActiveWorkSessionClockIn(
+        _ session: WorkSessionHistory,
+        startedAt: Date
+    ) throws {
+        let eventDate = Date()
+        guard startedAt < eventDate else {
+            throw SessionRepositoryError.invalidActiveSessionStart
+        }
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+
+        let previousState = engine.state
+        let adjustsCurrentFocusCycle = try repository
+            .isOpenWorkSessionInInitialFocusCycle(id: session.id)
+        var candidate = engine
+        guard candidate.handle(
+            .correctClockIn(
+                from: session.startedAt,
+                to: startedAt,
+                adjustsCurrentFocusCycle: adjustsCurrentFocusCycle
+            ),
+            at: eventDate
+        ) == .changed else {
+            throw SessionRepositoryError.sessionIsNotOpen
+        }
+
+        try repository.correctOpenWorkSessionStart(
+            id: session.id,
+            from: previousState,
+            to: candidate.state,
+            startedAt: startedAt,
+            correctedAt: eventDate
+        )
+        engine = candidate
+        state = candidate.state
+        now = eventDate
+        lastMessage = nil
+        refreshTodayHistory()
+
+        if state.phase == .focusing {
+            applyCurrentCalendarConstraints(at: eventDate)
+            applyCurrentCallActivity(at: eventDate)
+            _ = apply(.tick, at: eventDate)
+        } else {
+            synchronizeWindows(at: eventDate)
+        }
     }
 
     func showTodayHistory() {

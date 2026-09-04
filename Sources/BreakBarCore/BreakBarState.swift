@@ -50,6 +50,7 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case offsiteMeetingEnded
     case travelChainEnded
     case returnHome
+    case correctClockIn
 }
 
 public enum BreakPlanReason: String, Codable, Equatable, Sendable {
@@ -150,6 +151,11 @@ public enum BreakCommand: Equatable, Sendable {
     case updateCallActivity(BreakCallSignal?)
     case acknowledgeTravel
     case returnHome
+    case correctClockIn(
+        from: Date,
+        to: Date,
+        adjustsCurrentFocusCycle: Bool
+    )
 }
 
 public enum BreakCommandResult: Equatable, Sendable {
