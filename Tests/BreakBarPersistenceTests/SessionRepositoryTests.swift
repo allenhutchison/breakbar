@@ -896,6 +896,28 @@ final class SessionRepositoryTests: XCTestCase {
             ) { error in
                 XCTAssertEqual(error as? SessionRepositoryError, .invalidSessionCorrectionRange)
             }
+
+            let beforeFutureCorrection = try repository.dailyHistory(
+                on: origin,
+                calendar: utcCalendar
+            )
+            XCTAssertThrowsError(
+                try repository.correctWorkSession(
+                    id: openSession.id,
+                    startedAt: origin,
+                    endedAt: origin.addingTimeInterval(101),
+                    correctedAt: origin.addingTimeInterval(100)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .sessionCorrectionEndsInFuture
+                )
+            }
+            XCTAssertEqual(
+                try repository.dailyHistory(on: origin, calendar: utcCalendar),
+                beforeFutureCorrection
+            )
         }
 
         try withRepository { repository, _ in

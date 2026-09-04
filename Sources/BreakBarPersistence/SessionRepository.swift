@@ -17,6 +17,7 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
     case cannotCorrectOpenSession
     case sessionIsNotOpen
     case invalidSessionCorrectionRange
+    case sessionCorrectionEndsInFuture
     case invalidActiveSessionStart
     case sessionCorrectionWouldInvalidateIntervals
     case sessionCorrectionOverlapsExistingSession
@@ -37,6 +38,7 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
         case .cannotCorrectOpenSession: "Clock-in and clock-out times can be edited after clocking out."
         case .sessionIsNotOpen: "That work session is no longer active."
         case .invalidSessionCorrectionRange: "The clock-out time must be later than the clock-in time."
+        case .sessionCorrectionEndsInFuture: "The clock-out time cannot be later than the current time."
         case .invalidActiveSessionStart: "The clock-in time must be earlier than the current time."
         case .sessionCorrectionWouldInvalidateIntervals:
             "Those times would exclude activity already recorded in this work session."
@@ -566,6 +568,9 @@ public final class SessionRepository {
     ) throws {
         guard startedAt < endedAt else {
             throw SessionRepositoryError.invalidSessionCorrectionRange
+        }
+        guard endedAt <= correctedAt else {
+            throw SessionRepositoryError.sessionCorrectionEndsInFuture
         }
 
         try transaction {
