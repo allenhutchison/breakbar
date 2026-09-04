@@ -1,0 +1,92 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version from Support/Info.plist, without a leading v
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Sign, notarize, and publish
+    runs-on: xcode-27
+    timeout-minutes: 30
+    environment: release
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_27.0.app/Contents/Developer
+      RELEASE_VERSION: ${{ inputs.version }}
+      CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
+      CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+      NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
+      NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Validate release inputs
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test -n "$CERTIFICATE_BASE64"
+          test -n "$CERTIFICATE_PASSWORD"
+          test -n "$NOTARY_KEY_BASE64"
+          test -n "$NOTARY_KEY_ID"
+          test -n "$NOTARY_ISSUER_ID"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)" = "$RELEASE_VERSION"
+          grep -Fqx "# BreakBar $RELEASE_VERSION" RELEASE_NOTES.md
+
+      - name: Import Developer ID certificate
+        env:
+          KEYCHAIN_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/release.keychain-db"
+          printf '%s' "$CERTIFICATE_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security import "$certificate_path" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          signing_identity="$(security find-identity -v -p codesigning "$keychain_path" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)"
+          test -n "$signing_identity"
+          echo "SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
+      - name: Prepare notarization key
+        run: |
+          set -euo pipefail
+          notary_key_path="$RUNNER_TEMP/AuthKey_${NOTARY_KEY_ID}.p8"
+          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$notary_key_path"
+          chmod 600 "$notary_key_path"
+          echo "NOTARY_KEY_PATH=$notary_key_path" >> "$GITHUB_ENV"
+
+      - name: Build signed and notarized app
+        run: scripts/package-release.sh
+
+      - name: Publish GitHub release
+        run: |
+          set -euo pipefail
+          tag="v$RELEASE_VERSION"
+          gh release create "$tag" \
+            .build/release/BreakBar.zip \
+            .build/release/BreakBar.zip.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "BreakBar $RELEASE_VERSION" \
+            --notes-file RELEASE_NOTES.md \
+            --draft
+          gh release edit "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest

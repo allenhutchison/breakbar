@@ -27,7 +27,8 @@
   "guidelines": {
     "coding": ".claude/guidelines/coding.md",
     "testing": ".claude/guidelines/testing.md",
-    "invariants": ".claude/guidelines/invariants.md"
+    "invariants": ".claude/guidelines/invariants.md",
+    "release": ".claude/guidelines/release.md"
   },
   "labels": {
     "architecture": "architecture",
@@ -115,7 +116,13 @@
       "gemini-code-assist[bot]"
     ]
   },
-  "release": null,
+  "release": {
+    "versionCommand": "scripts/bump-version.sh {level}",
+    "versionPushesTag": false,
+    "notesFile": "RELEASE_NOTES.md",
+    "readmeSection": null,
+    "githubRelease": true
+  },
   "journal": {
     "project": "BreakBar"
   }
