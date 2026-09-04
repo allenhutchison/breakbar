@@ -13,6 +13,14 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
     case invalidCorrectionRange
     case correctionOutsideSession
     case correctionOverlapsExistingInterval
+    case sessionNotFound
+    case cannotCorrectOpenSession
+    case sessionIsNotOpen
+    case invalidSessionCorrectionRange
+    case sessionCorrectionEndsInFuture
+    case invalidActiveSessionStart
+    case sessionCorrectionWouldInvalidateIntervals
+    case sessionCorrectionOverlapsExistingSession
     case unsupportedTransition(from: BreakBarPhase, to: BreakBarPhase)
 
     public var errorDescription: String? {
@@ -26,6 +34,15 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
         case .invalidCorrectionRange: "The end time must be later than the start time."
         case .correctionOutsideSession: "The activity must remain within its clocked-in session."
         case .correctionOverlapsExistingInterval: "That time overlaps another activity."
+        case .sessionNotFound: "That work session no longer exists."
+        case .cannotCorrectOpenSession: "Clock-in and clock-out times can be edited after clocking out."
+        case .sessionIsNotOpen: "That work session is no longer active."
+        case .invalidSessionCorrectionRange: "The clock-out time must be later than the clock-in time."
+        case .sessionCorrectionEndsInFuture: "The clock-out time cannot be later than the current time."
+        case .invalidActiveSessionStart: "The clock-in time must be earlier than the current time."
+        case .sessionCorrectionWouldInvalidateIntervals:
+            "Those times would exclude activity already recorded in this work session."
+        case .sessionCorrectionOverlapsExistingSession: "Those times overlap another work session."
         case let .unsupportedTransition(from, to):
             "Unsupported timer transition from \(from.rawValue) to \(to.rawValue)."
         }
@@ -70,7 +87,7 @@ public struct SessionRepositoryStats: Equatable, Sendable {
 }
 
 public final class SessionRepository {
-    public static let schemaVersion = 5
+    public static let schemaVersion = 6
 
     private var database: OpaquePointer?
     private let encoder = JSONEncoder()
@@ -349,7 +366,9 @@ public final class SessionRepository {
 
         let sessions: [WorkSessionHistory] = try withStatement(
             """
-            SELECT id, started_at_utc, ended_at_utc
+            SELECT id, started_at_utc, ended_at_utc,
+                   corrected_from_started_at_utc, corrected_from_ended_at_utc,
+                   updated_at_utc
             FROM work_sessions
             WHERE started_at_utc < ?
               AND (ended_at_utc IS NULL OR ended_at_utc > ?)
@@ -365,7 +384,10 @@ public final class SessionRepository {
                     WorkSessionHistory(
                         id: String(cString: sqlite3_column_text(statement, 0)),
                         startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
-                        endedAt: optionalDate(in: statement, at: 2)
+                        endedAt: optionalDate(in: statement, at: 2),
+                        correctedFromStartedAt: optionalDate(in: statement, at: 3),
+                        correctedFromEndedAt: optionalDate(in: statement, at: 4),
+                        updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5))
                     )
                 )
                 result = sqlite3_step(statement)
@@ -538,6 +560,345 @@ public final class SessionRepository {
         }
     }
 
+    public func correctWorkSession(
+        id: String,
+        startedAt: Date,
+        endedAt: Date,
+        correctedAt: Date = Date()
+    ) throws {
+        guard startedAt < endedAt else {
+            throw SessionRepositoryError.invalidSessionCorrectionRange
+        }
+        guard endedAt <= correctedAt else {
+            throw SessionRepositoryError.sessionCorrectionEndsInFuture
+        }
+
+        try transaction {
+            let existing: (
+                startedAt: Date,
+                endedAt: Date?,
+                correctedFromStartedAt: Date?,
+                correctedFromEndedAt: Date?
+            )? = try withStatement(
+                """
+                SELECT started_at_utc, ended_at_utc,
+                       corrected_from_started_at_utc, corrected_from_ended_at_utc
+                FROM work_sessions
+                WHERE id = ?
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                let result = sqlite3_step(statement)
+                guard result != SQLITE_DONE else { return nil }
+                guard result == SQLITE_ROW else { throw lastError() }
+                return (
+                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                    optionalDate(in: statement, at: 1),
+                    optionalDate(in: statement, at: 2),
+                    optionalDate(in: statement, at: 3)
+                )
+            }
+
+            guard let existing else { throw SessionRepositoryError.sessionNotFound }
+            guard let existingEndedAt = existing.endedAt else {
+                throw SessionRepositoryError.cannotCorrectOpenSession
+            }
+
+            let firstInterval: (id: String, endedAt: Date?)? = try withStatement(
+                """
+                SELECT id, ended_at_utc
+                FROM intervals
+                WHERE session_id = ?
+                ORDER BY started_at_utc, id
+                LIMIT 1
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                let result = sqlite3_step(statement)
+                guard result != SQLITE_DONE else { return nil }
+                guard result == SQLITE_ROW else { throw lastError() }
+                return (
+                    String(cString: sqlite3_column_text(statement, 0)),
+                    optionalDate(in: statement, at: 1)
+                )
+            }
+            let lastInterval: (id: String, startedAt: Date)? = try withStatement(
+                """
+                SELECT id, started_at_utc
+                FROM intervals
+                WHERE session_id = ?
+                ORDER BY started_at_utc DESC, id DESC
+                LIMIT 1
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                let result = sqlite3_step(statement)
+                guard result != SQLITE_DONE else { return nil }
+                guard result == SQLITE_ROW else { throw lastError() }
+                return (
+                    String(cString: sqlite3_column_text(statement, 0)),
+                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 1))
+                )
+            }
+            guard let firstInterval,
+                  let firstIntervalEndedAt = firstInterval.endedAt,
+                  let lastInterval
+            else {
+                throw SessionRepositoryError.sessionCorrectionWouldInvalidateIntervals
+            }
+            if firstInterval.id != lastInterval.id {
+                guard startedAt < firstIntervalEndedAt,
+                      endedAt > lastInterval.startedAt
+                else {
+                    throw SessionRepositoryError.sessionCorrectionWouldInvalidateIntervals
+                }
+            }
+
+            let overlappingCount: Int = try withStatement(
+                """
+                SELECT COUNT(*)
+                FROM work_sessions
+                WHERE id <> ?
+                  AND started_at_utc < ?
+                  AND (ended_at_utc IS NULL OR ended_at_utc > ?)
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                try bind(endedAt, to: statement, at: 2)
+                try bind(startedAt, to: statement, at: 3)
+                guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
+                return Int(sqlite3_column_int64(statement, 0))
+            }
+            guard overlappingCount == 0 else {
+                throw SessionRepositoryError.sessionCorrectionOverlapsExistingSession
+            }
+
+            let originalStartedAt = existing.correctedFromStartedAt ?? existing.startedAt
+            let originalEndedAt = existing.correctedFromEndedAt ?? existingEndedAt
+            try withStatement(
+                """
+                UPDATE work_sessions
+                SET started_at_utc = ?, ended_at_utc = ?,
+                    corrected_from_started_at_utc = ?, corrected_from_ended_at_utc = ?,
+                    updated_at_utc = ?
+                WHERE id = ?
+                """
+            ) { statement in
+                try bind(startedAt, to: statement, at: 1)
+                try bind(endedAt, to: statement, at: 2)
+                try bind(originalStartedAt, to: statement, at: 3)
+                try bind(originalEndedAt, to: statement, at: 4)
+                try bind(correctedAt, to: statement, at: 5)
+                try bind(id, to: statement, at: 6)
+                try stepDone(statement)
+            }
+            guard sqlite3_changes(database) == 1 else {
+                throw SessionRepositoryError.sessionNotFound
+            }
+
+            if firstInterval.id == lastInterval.id {
+                try withStatement(
+                    """
+                    UPDATE intervals
+                    SET started_at_utc = ?, ended_at_utc = ?,
+                        corrected_from_kind = COALESCE(corrected_from_kind, kind),
+                        updated_at_utc = ?
+                    WHERE id = ?
+                    """
+                ) { statement in
+                    try bind(startedAt, to: statement, at: 1)
+                    try bind(endedAt, to: statement, at: 2)
+                    try bind(correctedAt, to: statement, at: 3)
+                    try bind(firstInterval.id, to: statement, at: 4)
+                    try stepDone(statement)
+                }
+            } else {
+                try withStatement(
+                    """
+                    UPDATE intervals
+                    SET started_at_utc = ?,
+                        corrected_from_kind = COALESCE(corrected_from_kind, kind),
+                        updated_at_utc = ?
+                    WHERE id = ?
+                    """
+                ) { statement in
+                    try bind(startedAt, to: statement, at: 1)
+                    try bind(correctedAt, to: statement, at: 2)
+                    try bind(firstInterval.id, to: statement, at: 3)
+                    try stepDone(statement)
+                }
+                try withStatement(
+                    """
+                    UPDATE intervals
+                    SET ended_at_utc = ?,
+                        corrected_from_kind = COALESCE(corrected_from_kind, kind),
+                        updated_at_utc = ?
+                    WHERE id = ?
+                    """
+                ) { statement in
+                    try bind(endedAt, to: statement, at: 1)
+                    try bind(correctedAt, to: statement, at: 2)
+                    try bind(lastInterval.id, to: statement, at: 3)
+                    try stepDone(statement)
+                }
+            }
+        }
+    }
+
+    public func correctOpenWorkSessionStart(
+        id: String,
+        from previous: BreakBarState,
+        to next: BreakBarState,
+        startedAt: Date,
+        correctedAt: Date = Date()
+    ) throws {
+        guard startedAt < correctedAt else {
+            throw SessionRepositoryError.invalidActiveSessionStart
+        }
+
+        try transaction {
+            guard try loadState() == previous else {
+                throw SessionRepositoryError.staleState
+            }
+
+            let existing: (
+                startedAt: Date,
+                endedAt: Date?,
+                correctedFromStartedAt: Date?
+            )? = try withStatement(
+                """
+                SELECT started_at_utc, ended_at_utc, corrected_from_started_at_utc
+                FROM work_sessions
+                WHERE id = ?
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                let result = sqlite3_step(statement)
+                guard result != SQLITE_DONE else { return nil }
+                guard result == SQLITE_ROW else { throw lastError() }
+                return (
+                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 0)),
+                    optionalDate(in: statement, at: 1),
+                    optionalDate(in: statement, at: 2)
+                )
+            }
+            guard let existing else { throw SessionRepositoryError.sessionNotFound }
+            guard existing.endedAt == nil else {
+                throw SessionRepositoryError.sessionIsNotOpen
+            }
+
+            let firstInterval: (id: String, endedAt: Date?)? = try withStatement(
+                """
+                SELECT id, ended_at_utc
+                FROM intervals
+                WHERE session_id = ?
+                ORDER BY started_at_utc, id
+                LIMIT 1
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                let result = sqlite3_step(statement)
+                guard result != SQLITE_DONE else { return nil }
+                guard result == SQLITE_ROW else { throw lastError() }
+                return (
+                    String(cString: sqlite3_column_text(statement, 0)),
+                    optionalDate(in: statement, at: 1)
+                )
+            }
+            guard let firstInterval,
+                  firstInterval.endedAt.map({ startedAt < $0 }) ?? true
+            else {
+                throw SessionRepositoryError.sessionCorrectionWouldInvalidateIntervals
+            }
+
+            let overlappingCount: Int = try withStatement(
+                """
+                SELECT COUNT(*)
+                FROM work_sessions
+                WHERE id <> ?
+                  AND (ended_at_utc IS NULL OR ended_at_utc > ?)
+                """
+            ) { statement in
+                try bind(id, to: statement, at: 1)
+                try bind(startedAt, to: statement, at: 2)
+                guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
+                return Int(sqlite3_column_int64(statement, 0))
+            }
+            guard overlappingCount == 0 else {
+                throw SessionRepositoryError.sessionCorrectionOverlapsExistingSession
+            }
+
+            let originalStartedAt = existing.correctedFromStartedAt ?? existing.startedAt
+            try withStatement(
+                """
+                UPDATE work_sessions
+                SET started_at_utc = ?, corrected_from_started_at_utc = ?,
+                    updated_at_utc = ?
+                WHERE id = ? AND ended_at_utc IS NULL
+                """
+            ) { statement in
+                try bind(startedAt, to: statement, at: 1)
+                try bind(originalStartedAt, to: statement, at: 2)
+                try bind(correctedAt, to: statement, at: 3)
+                try bind(id, to: statement, at: 4)
+                try stepDone(statement)
+            }
+            guard sqlite3_changes(database) == 1 else {
+                throw SessionRepositoryError.sessionIsNotOpen
+            }
+
+            try withStatement(
+                """
+                UPDATE intervals
+                SET started_at_utc = ?,
+                    corrected_from_kind = COALESCE(corrected_from_kind, kind),
+                    updated_at_utc = ?
+                WHERE id = ?
+                """
+            ) { statement in
+                try bind(startedAt, to: statement, at: 1)
+                try bind(correctedAt, to: statement, at: 2)
+                try bind(firstInterval.id, to: statement, at: 3)
+                try stepDone(statement)
+            }
+
+            try saveSnapshot(next)
+        }
+    }
+
+    public func isOpenWorkSessionInInitialFocusCycle(id: String) throws -> Bool {
+        let result: (endedAt: Date?, intervalCount: Int, openFocusCount: Int)? = try withStatement(
+            """
+            SELECT work_sessions.ended_at_utc,
+                   COUNT(intervals.id),
+                   COALESCE(SUM(
+                       CASE
+                           WHEN intervals.kind = 'focus'
+                            AND intervals.ended_at_utc IS NULL THEN 1
+                           ELSE 0
+                       END
+                   ), 0)
+            FROM work_sessions
+            LEFT JOIN intervals ON intervals.session_id = work_sessions.id
+            WHERE work_sessions.id = ?
+            GROUP BY work_sessions.id
+            """
+        ) { statement in
+            try bind(id, to: statement, at: 1)
+            let step = sqlite3_step(statement)
+            guard step != SQLITE_DONE else { return nil }
+            guard step == SQLITE_ROW else { throw lastError() }
+            return (
+                optionalDate(in: statement, at: 0),
+                Int(sqlite3_column_int64(statement, 1)),
+                Int(sqlite3_column_int64(statement, 2))
+            )
+        }
+        guard let result else { throw SessionRepositoryError.sessionNotFound }
+        guard result.endedAt == nil else { throw SessionRepositoryError.sessionIsNotOpen }
+        return result.intervalCount == 1 && result.openFocusCount == 1
+    }
+
     private func migrate() throws {
         var version = try count("PRAGMA user_version")
         guard version <= Self.schemaVersion else {
@@ -553,7 +914,10 @@ public final class SessionRepository {
                     id TEXT PRIMARY KEY,
                     started_at_utc REAL NOT NULL,
                     ended_at_utc REAL,
-                    created_at_utc REAL NOT NULL
+                    created_at_utc REAL NOT NULL,
+                    corrected_from_started_at_utc REAL,
+                    corrected_from_ended_at_utc REAL,
+                    updated_at_utc REAL NOT NULL
                 );
 
                 CREATE UNIQUE INDEX one_open_work_session
@@ -586,7 +950,7 @@ public final class SessionRepository {
                     updated_at_utc REAL NOT NULL
                 );
 
-                PRAGMA user_version = 5;
+                PRAGMA user_version = 6;
                 """
                 )
             }
@@ -740,16 +1104,45 @@ public final class SessionRepository {
                     """
                 )
             }
+            version = 5
+        }
+
+        if version == 5 {
+            try transaction {
+                try execute(
+                    """
+                    ALTER TABLE work_sessions
+                    ADD COLUMN corrected_from_started_at_utc REAL;
+
+                    ALTER TABLE work_sessions
+                    ADD COLUMN corrected_from_ended_at_utc REAL;
+
+                    ALTER TABLE work_sessions
+                    ADD COLUMN updated_at_utc REAL NOT NULL DEFAULT 0;
+
+                    UPDATE work_sessions
+                    SET updated_at_utc = created_at_utc;
+
+                    PRAGMA user_version = 6;
+                    """
+                )
+            }
         }
     }
 
     private func insertSession(id: String, startedAt: Date) throws {
+        let createdAt = Date()
         try withStatement(
-            "INSERT INTO work_sessions (id, started_at_utc, created_at_utc) VALUES (?, ?, ?)"
+            """
+            INSERT INTO work_sessions
+                (id, started_at_utc, created_at_utc, updated_at_utc)
+            VALUES (?, ?, ?, ?)
+            """
         ) { statement in
             try bind(id, to: statement, at: 1)
             try bind(startedAt, to: statement, at: 2)
-            try bind(Date(), to: statement, at: 3)
+            try bind(createdAt, to: statement, at: 3)
+            try bind(createdAt, to: statement, at: 4)
             try stepDone(statement)
         }
     }
@@ -985,9 +1378,14 @@ public final class SessionRepository {
 
     private func closeOpenSession(at date: Date) throws {
         try withStatement(
-            "UPDATE work_sessions SET ended_at_utc = ? WHERE ended_at_utc IS NULL"
+            """
+            UPDATE work_sessions
+            SET ended_at_utc = ?, updated_at_utc = ?
+            WHERE ended_at_utc IS NULL
+            """
         ) { statement in
             try bind(date, to: statement, at: 1)
+            try bind(Date(), to: statement, at: 2)
             try stepDone(statement)
         }
         guard sqlite3_changes(database) == 1 else {

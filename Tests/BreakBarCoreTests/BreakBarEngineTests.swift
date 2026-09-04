@@ -22,6 +22,83 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.enforcement, .required)
     }
 
+    func testCorrectingInitialClockInRecalculatesFocusDeadline() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        let correctedStart = origin.addingTimeInterval(-20)
+
+        XCTAssertEqual(
+            engine.handle(
+                .correctClockIn(
+                    from: origin,
+                    to: correctedStart,
+                    adjustsCurrentFocusCycle: true
+                ),
+                at: origin.addingTimeInterval(10)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phaseStartedAt, correctedStart)
+        XCTAssertEqual(engine.state.nominalFocusDueAt, origin.addingTimeInterval(40))
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(40))
+        XCTAssertEqual(engine.state.lastTransitionReason, .correctClockIn)
+    }
+
+    func testCorrectingClockInDoesNotRewriteLaterFocusCycle() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.startBreak, at: origin.addingTimeInterval(60))
+        let returnedAt = origin.addingTimeInterval(80)
+        _ = engine.handle(.returnToFocus, at: returnedAt)
+
+        XCTAssertEqual(
+            engine.handle(
+                .correctClockIn(
+                    from: origin,
+                    to: origin.addingTimeInterval(-20),
+                    adjustsCurrentFocusCycle: false
+                ),
+                at: origin.addingTimeInterval(90)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phaseStartedAt, returnedAt)
+        XCTAssertEqual(engine.state.focusDueAt, returnedAt.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.lastTransitionReason, .correctClockIn)
+    }
+
+    func testCorrectingInitialClockInRepairsMismatchedTimerAnchor() {
+        let staleTimerStart = origin.addingTimeInterval(-20)
+        var engine = BreakBarEngine(
+            state: BreakBarState(
+                phase: .focusing,
+                phaseStartedAt: staleTimerStart,
+                nominalFocusDueAt: staleTimerStart.addingTimeInterval(policy.focusDuration),
+                focusDueAt: staleTimerStart.addingTimeInterval(policy.focusDuration)
+            ),
+            policy: policy
+        )
+        let ledgerStart = origin
+        let correctedStart = origin.addingTimeInterval(-40)
+
+        XCTAssertEqual(
+            engine.handle(
+                .correctClockIn(
+                    from: ledgerStart,
+                    to: correctedStart,
+                    adjustsCurrentFocusCycle: true
+                ),
+                at: origin.addingTimeInterval(10)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phaseStartedAt, correctedStart)
+        XCTAssertEqual(
+            engine.state.focusDueAt,
+            correctedStart.addingTimeInterval(policy.focusDuration)
+        )
+    }
+
     func testBreakCannotEndBeforeMinimum() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)

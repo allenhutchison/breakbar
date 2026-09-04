@@ -223,6 +223,9 @@ final class SessionRepositoryTests: XCTestCase {
         XCTAssertEqual(migratedHistory.intervals.count, 1)
         XCTAssertFalse(migratedHistory.intervals[0].wasCorrected)
         XCTAssertEqual(migratedHistory.intervals[0].updatedAt, Date(timeIntervalSince1970: 10))
+        XCTAssertEqual(migratedHistory.sessions.count, 1)
+        XCTAssertFalse(migratedHistory.sessions[0].wasCorrected)
+        XCTAssertEqual(migratedHistory.sessions[0].updatedAt, Date(timeIntervalSince1970: 10))
 
         var engine = BreakBarEngine(policy: policy)
         try repository.bootstrapIfNeeded(state: engine.state, at: origin)
@@ -777,6 +780,361 @@ final class SessionRepositoryTests: XCTestCase {
             ) { error in
                 XCTAssertEqual(error as? SessionRepositoryError, .invalidCorrectionRange)
             }
+        }
+    }
+
+    func testCorrectingWorkSessionUpdatesBoundaryIntervalsAndSummary() throws {
+        try withRepository { repository, _ in
+            let history = try createClosedCycle(in: repository)
+            let session = history.sessions[0]
+            let correctedAt = origin.addingTimeInterval(300)
+
+            try repository.correctWorkSession(
+                id: session.id,
+                startedAt: origin.addingTimeInterval(10),
+                endedAt: origin.addingTimeInterval(110),
+                correctedAt: correctedAt
+            )
+
+            var corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(corrected.sessions[0].startedAt, origin.addingTimeInterval(10))
+            XCTAssertEqual(corrected.sessions[0].endedAt, origin.addingTimeInterval(110))
+            XCTAssertEqual(corrected.sessions[0].correctedFromStartedAt, origin)
+            XCTAssertEqual(
+                corrected.sessions[0].correctedFromEndedAt,
+                origin.addingTimeInterval(120)
+            )
+            XCTAssertEqual(corrected.sessions[0].updatedAt, correctedAt)
+            XCTAssertEqual(corrected.intervals[0].startedAt, origin.addingTimeInterval(10))
+            XCTAssertEqual(corrected.intervals[2].endedAt, origin.addingTimeInterval(110))
+            XCTAssertTrue(corrected.intervals[0].wasCorrected)
+            XCTAssertTrue(corrected.intervals[2].wasCorrected)
+
+            var summary = corrected.summary(at: correctedAt)
+            XCTAssertEqual(summary.clockedIn, 100)
+            XCTAssertEqual(summary.focus, 80)
+            XCTAssertEqual(summary.breaks, 20)
+
+            try repository.correctWorkSession(
+                id: session.id,
+                startedAt: origin.addingTimeInterval(5),
+                endedAt: origin.addingTimeInterval(115),
+                correctedAt: correctedAt.addingTimeInterval(1)
+            )
+            corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            summary = corrected.summary(at: correctedAt)
+            XCTAssertEqual(corrected.sessions[0].correctedFromStartedAt, origin)
+            XCTAssertEqual(
+                corrected.sessions[0].correctedFromEndedAt,
+                origin.addingTimeInterval(120)
+            )
+            XCTAssertEqual(summary.clockedIn, 110)
+            XCTAssertEqual(summary.focus, 90)
+        }
+    }
+
+    func testCorrectingSingleIntervalSessionUpdatesBothBoundaries() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            try commit(
+                .clockOut,
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+            let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+
+            try repository.correctWorkSession(
+                id: history.sessions[0].id,
+                startedAt: origin.addingTimeInterval(-10),
+                endedAt: origin.addingTimeInterval(70)
+            )
+
+            let corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(corrected.sessions[0].startedAt, origin.addingTimeInterval(-10))
+            XCTAssertEqual(corrected.sessions[0].endedAt, origin.addingTimeInterval(70))
+            XCTAssertEqual(corrected.intervals[0].startedAt, origin.addingTimeInterval(-10))
+            XCTAssertEqual(corrected.intervals[0].endedAt, origin.addingTimeInterval(70))
+            XCTAssertEqual(corrected.summary(at: origin.addingTimeInterval(100)).focus, 80)
+        }
+    }
+
+    func testWorkSessionCorrectionRejectsOpenInvalidAndExcludedActivity() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let openSession = try repository.dailyHistory(
+                on: origin,
+                calendar: utcCalendar
+            ).sessions[0]
+
+            XCTAssertThrowsError(
+                try repository.correctWorkSession(
+                    id: openSession.id,
+                    startedAt: origin,
+                    endedAt: origin.addingTimeInterval(30)
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .cannotCorrectOpenSession)
+            }
+
+            try commit(
+                .clockOut,
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+            XCTAssertThrowsError(
+                try repository.correctWorkSession(
+                    id: openSession.id,
+                    startedAt: origin.addingTimeInterval(30),
+                    endedAt: origin.addingTimeInterval(30)
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .invalidSessionCorrectionRange)
+            }
+
+            let beforeFutureCorrection = try repository.dailyHistory(
+                on: origin,
+                calendar: utcCalendar
+            )
+            XCTAssertThrowsError(
+                try repository.correctWorkSession(
+                    id: openSession.id,
+                    startedAt: origin,
+                    endedAt: origin.addingTimeInterval(101),
+                    correctedAt: origin.addingTimeInterval(100)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .sessionCorrectionEndsInFuture
+                )
+            }
+            XCTAssertEqual(
+                try repository.dailyHistory(on: origin, calendar: utcCalendar),
+                beforeFutureCorrection
+            )
+        }
+
+        try withRepository { repository, _ in
+            let history = try createClosedCycle(in: repository)
+            XCTAssertThrowsError(
+                try repository.correctWorkSession(
+                    id: history.sessions[0].id,
+                    startedAt: origin.addingTimeInterval(65),
+                    endedAt: origin.addingTimeInterval(120)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .sessionCorrectionWouldInvalidateIntervals
+                )
+            }
+        }
+    }
+
+    func testWorkSessionCorrectionRejectsOverlapAndRollsBack() throws {
+        try withRepository { repository, _ in
+            let firstHistory = try createClosedCycle(in: repository)
+            var engine = BreakBarEngine(
+                state: try XCTUnwrap(repository.loadState()),
+                policy: policy
+            )
+            try commit(
+                .clockIn,
+                at: origin.addingTimeInterval(200),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .clockOut,
+                at: origin.addingTimeInterval(260),
+                engine: &engine,
+                repository: repository
+            )
+
+            XCTAssertThrowsError(
+                try repository.correctWorkSession(
+                    id: firstHistory.sessions[0].id,
+                    startedAt: origin,
+                    endedAt: origin.addingTimeInterval(210)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .sessionCorrectionOverlapsExistingSession
+                )
+            }
+
+            let unchanged = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(unchanged.sessions[0], firstHistory.sessions[0])
+            XCTAssertEqual(unchanged.intervals[2], firstHistory.intervals[2])
+        }
+    }
+
+    func testActiveClockInCorrectionUpdatesLedgerAndSavedCountdown() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            let session = history.sessions[0]
+            XCTAssertTrue(
+                try repository.isOpenWorkSessionInInitialFocusCycle(id: session.id)
+            )
+            let correctedStart = origin.addingTimeInterval(-20)
+            let correctedAt = origin.addingTimeInterval(10)
+            let previous = engine.state
+            var candidate = engine
+            XCTAssertEqual(
+                candidate.handle(
+                    .correctClockIn(
+                        from: session.startedAt,
+                        to: correctedStart,
+                        adjustsCurrentFocusCycle: true
+                    ),
+                    at: correctedAt
+                ),
+                .changed
+            )
+
+            try repository.correctOpenWorkSessionStart(
+                id: session.id,
+                from: previous,
+                to: candidate.state,
+                startedAt: correctedStart,
+                correctedAt: correctedAt
+            )
+
+            var corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(corrected.sessions[0].startedAt, correctedStart)
+            XCTAssertNil(corrected.sessions[0].endedAt)
+            XCTAssertEqual(corrected.sessions[0].correctedFromStartedAt, origin)
+            XCTAssertNil(corrected.sessions[0].correctedFromEndedAt)
+            XCTAssertEqual(corrected.intervals[0].startedAt, correctedStart)
+            XCTAssertNil(corrected.intervals[0].endedAt)
+            XCTAssertEqual(try repository.loadState(), candidate.state)
+            XCTAssertEqual(
+                candidate.state.focusDueAt,
+                correctedStart.addingTimeInterval(policy.focusDuration)
+            )
+
+            let secondStart = origin.addingTimeInterval(-10)
+            let secondPrevious = candidate.state
+            XCTAssertEqual(
+                candidate.handle(
+                    .correctClockIn(
+                        from: correctedStart,
+                        to: secondStart,
+                        adjustsCurrentFocusCycle: true
+                    ),
+                    at: correctedAt.addingTimeInterval(1)
+                ),
+                .changed
+            )
+            try repository.correctOpenWorkSessionStart(
+                id: session.id,
+                from: secondPrevious,
+                to: candidate.state,
+                startedAt: secondStart,
+                correctedAt: correctedAt.addingTimeInterval(1)
+            )
+            corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(corrected.sessions[0].correctedFromStartedAt, origin)
+            XCTAssertTrue(
+                try repository.isOpenWorkSessionInInitialFocusCycle(id: session.id)
+            )
+        }
+    }
+
+    func testOpenWorkSessionStopsBeingInitialCycleAfterBreak() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let session = try XCTUnwrap(
+                repository.dailyHistory(on: origin, calendar: utcCalendar).sessions.first
+            )
+            XCTAssertTrue(
+                try repository.isOpenWorkSessionInInitialFocusCycle(id: session.id)
+            )
+
+            try commit(
+                .startBreak,
+                at: origin.addingTimeInterval(policy.focusDuration),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .returnToFocus,
+                at: origin.addingTimeInterval(
+                    policy.focusDuration + policy.minimumBreakDuration
+                ),
+                engine: &engine,
+                repository: repository
+            )
+
+            XCTAssertFalse(
+                try repository.isOpenWorkSessionInInitialFocusCycle(id: session.id)
+            )
+        }
+    }
+
+    func testActiveClockInCorrectionRejectsPreviousSessionOverlap() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            try commit(
+                .clockOut,
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .clockIn,
+                at: origin.addingTimeInterval(100),
+                engine: &engine,
+                repository: repository
+            )
+            let before = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            let activeSession = try XCTUnwrap(before.sessions.last)
+            let previous = engine.state
+            var candidate = engine
+            XCTAssertEqual(
+                candidate.handle(
+                    .correctClockIn(
+                        from: activeSession.startedAt,
+                        to: origin.addingTimeInterval(50),
+                        adjustsCurrentFocusCycle: true
+                    ),
+                    at: origin.addingTimeInterval(110)
+                ),
+                .changed
+            )
+
+            XCTAssertThrowsError(
+                try repository.correctOpenWorkSessionStart(
+                    id: activeSession.id,
+                    from: previous,
+                    to: candidate.state,
+                    startedAt: origin.addingTimeInterval(50),
+                    correctedAt: origin.addingTimeInterval(110)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .sessionCorrectionOverlapsExistingSession
+                )
+            }
+
+            let unchanged = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(unchanged.sessions.last, activeSession)
+            XCTAssertEqual(try repository.loadState(), previous)
         }
     }
 

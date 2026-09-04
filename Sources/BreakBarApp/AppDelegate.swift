@@ -1,4 +1,5 @@
 import AppKit
+import BreakBarCore
 import Combine
 import SwiftUI
 @preconcurrency import UserNotifications
@@ -76,10 +77,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func observeModel() {
-        modelObservation = model.objectWillChange.sink { [weak self] in
-            DispatchQueue.main.async {
-                self?.updateStatusItem()
-            }
+        modelObservation = Publishers.CombineLatest3(
+            model.$state,
+            model.$policy,
+            model.$now
+        ).sink { [weak self] state, policy, now in
+            self?.updateStatusItem(
+                presentation: BreakBarPresentation(
+                    state: state,
+                    policy: policy,
+                    now: now
+                )
+            )
         }
     }
 
@@ -127,9 +136,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         model.calendarMonitor.refresh()
     }
 
-    private func updateStatusItem() {
+    private func updateStatusItem(presentation: BreakBarPresentation? = nil) {
         guard let statusItem, let button = statusItem.button else { return }
-        let presentation = model.presentation
+        let presentation = presentation ?? model.presentation
         let itemWidth: CGFloat
         if presentation.statusLabel == "Leave " {
             itemWidth = travelWarningStatusItemWidth
@@ -144,12 +153,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             statusItem.length = itemWidth
         }
         button.image = statusImage(
-            symbolName: model.menuBarSymbol,
+            symbolName: menuBarSymbol(for: presentation.tone),
             text: presentation.shortLabel,
             width: itemWidth
         )
         button.toolTip = "BreakBar — \(presentation.shortLabel)"
         button.setAccessibilityLabel("BreakBar, \(presentation.shortLabel)")
+    }
+
+    private func menuBarSymbol(for tone: BreakBarPresentation.Tone) -> String {
+        switch tone {
+        case .neutral: "figure.stand"
+        case .focus: "timer"
+        case .meeting: "video.fill"
+        case .warning: "exclamationmark.circle.fill"
+        case .required: "figure.walk.motion"
+        case .breakTime: "cup.and.heat.waves.fill"
+        case .lunch: "fork.knife"
+        case .away: "figure.walk"
+        case .travel: "car.fill"
+        }
     }
 
     private func statusImage(symbolName: String, text: String, width: CGFloat) -> NSImage {

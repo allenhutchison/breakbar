@@ -13,11 +13,28 @@ public struct WorkSessionHistory: Equatable, Identifiable, Sendable {
     public let id: String
     public let startedAt: Date
     public let endedAt: Date?
+    public let correctedFromStartedAt: Date?
+    public let correctedFromEndedAt: Date?
+    public let updatedAt: Date
 
-    public init(id: String, startedAt: Date, endedAt: Date?) {
+    public var wasCorrected: Bool {
+        correctedFromStartedAt != nil || correctedFromEndedAt != nil
+    }
+
+    public init(
+        id: String,
+        startedAt: Date,
+        endedAt: Date?,
+        correctedFromStartedAt: Date?,
+        correctedFromEndedAt: Date?,
+        updatedAt: Date
+    ) {
         self.id = id
         self.startedAt = startedAt
         self.endedAt = endedAt
+        self.correctedFromStartedAt = correctedFromStartedAt
+        self.correctedFromEndedAt = correctedFromEndedAt
+        self.updatedAt = updatedAt
     }
 }
 
