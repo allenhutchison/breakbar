@@ -286,6 +286,24 @@ final class AppModel: ObservableObject {
         refreshTodayHistory(at: Date())
     }
 
+    func correctHistoryInterval(
+        _ interval: ActivityHistoryInterval,
+        kind: ActivityKind,
+        startedAt: Date,
+        endedAt: Date
+    ) throws {
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        try repository.correctInterval(
+            id: interval.id,
+            kind: kind,
+            startedAt: startedAt,
+            endedAt: endedAt
+        )
+        refreshTodayHistory()
+    }
+
     func showTodayHistory() {
         refreshTodayHistory()
         todayHistoryWindowController.show(model: self)

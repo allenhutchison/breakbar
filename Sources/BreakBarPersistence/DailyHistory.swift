@@ -28,6 +28,10 @@ public struct ActivityHistoryInterval: Equatable, Identifiable, Sendable {
     public let startedAt: Date
     public let endedAt: Date?
     public let source: String
+    public let correctedFromKind: ActivityKind?
+    public let updatedAt: Date
+
+    public var wasCorrected: Bool { correctedFromKind != nil }
 
     public init(
         id: String,
@@ -35,7 +39,9 @@ public struct ActivityHistoryInterval: Equatable, Identifiable, Sendable {
         kind: ActivityKind,
         startedAt: Date,
         endedAt: Date?,
-        source: String
+        source: String,
+        correctedFromKind: ActivityKind?,
+        updatedAt: Date
     ) {
         self.id = id
         self.sessionID = sessionID
@@ -43,6 +49,8 @@ public struct ActivityHistoryInterval: Equatable, Identifiable, Sendable {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.source = source
+        self.correctedFromKind = correctedFromKind
+        self.updatedAt = updatedAt
     }
 }
 

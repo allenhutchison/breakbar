@@ -216,6 +216,13 @@ final class SessionRepositoryTests: XCTestCase {
         let repository = try SessionRepository(url: databaseURL)
         XCTAssertEqual(try repository.stats().totalSessions, 1)
         XCTAssertEqual(try repository.stats().focusIntervals, 1)
+        let migratedHistory = try repository.dailyHistory(
+            on: Date(timeIntervalSince1970: 15),
+            calendar: utcCalendar
+        )
+        XCTAssertEqual(migratedHistory.intervals.count, 1)
+        XCTAssertFalse(migratedHistory.intervals[0].wasCorrected)
+        XCTAssertEqual(migratedHistory.intervals[0].updatedAt, Date(timeIntervalSince1970: 10))
 
         var engine = BreakBarEngine(policy: policy)
         try repository.bootstrapIfNeeded(state: engine.state, at: origin)
@@ -659,6 +666,120 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testCorrectingCompletedIntervalUpdatesAuditFieldsAndSummary() throws {
+        try withRepository { repository, _ in
+            let history = try createClosedCycle(in: repository)
+            let interval = history.intervals[0]
+            let correctedAt = origin.addingTimeInterval(200)
+
+            try repository.correctInterval(
+                id: interval.id,
+                kind: .meeting,
+                startedAt: origin.addingTimeInterval(5),
+                endedAt: origin.addingTimeInterval(55),
+                correctedAt: correctedAt
+            )
+
+            var corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(corrected.intervals[0].kind, .meeting)
+            XCTAssertEqual(corrected.intervals[0].startedAt, origin.addingTimeInterval(5))
+            XCTAssertEqual(corrected.intervals[0].endedAt, origin.addingTimeInterval(55))
+            XCTAssertEqual(corrected.intervals[0].correctedFromKind, .focus)
+            XCTAssertEqual(corrected.intervals[0].updatedAt, correctedAt)
+            XCTAssertEqual(corrected.intervals[0].source, "state_machine")
+
+            try repository.correctInterval(
+                id: interval.id,
+                kind: .lunch,
+                startedAt: origin.addingTimeInterval(10),
+                endedAt: origin.addingTimeInterval(50),
+                correctedAt: correctedAt.addingTimeInterval(1)
+            )
+            corrected = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            let summary = corrected.summary(at: correctedAt)
+            XCTAssertEqual(corrected.intervals[0].correctedFromKind, .focus)
+            XCTAssertEqual(summary.clockedIn, 120)
+            XCTAssertEqual(summary.focus, 40)
+            XCTAssertEqual(summary.meetings, 0)
+            XCTAssertEqual(summary.breaks, 20)
+            XCTAssertEqual(summary.lunch, 40)
+        }
+    }
+
+    func testCorrectionRejectsOverlapAndRollsBack() throws {
+        try withRepository { repository, _ in
+            let history = try createClosedCycle(in: repository)
+            let interval = history.intervals[0]
+
+            XCTAssertThrowsError(
+                try repository.correctInterval(
+                    id: interval.id,
+                    kind: .meeting,
+                    startedAt: origin,
+                    endedAt: origin.addingTimeInterval(70)
+                )
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .correctionOverlapsExistingInterval
+                )
+            }
+
+            let unchanged = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(unchanged.intervals[0], interval)
+        }
+    }
+
+    func testCorrectionRejectsOpenIntervalAndInvalidSessionBounds() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let openInterval = try repository.dailyHistory(
+                on: origin,
+                calendar: utcCalendar
+            ).intervals[0]
+
+            XCTAssertThrowsError(
+                try repository.correctInterval(
+                    id: openInterval.id,
+                    kind: .focus,
+                    startedAt: origin,
+                    endedAt: origin.addingTimeInterval(30)
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .cannotCorrectOpenInterval)
+            }
+
+            try commit(
+                .clockOut,
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+            XCTAssertThrowsError(
+                try repository.correctInterval(
+                    id: openInterval.id,
+                    kind: .focus,
+                    startedAt: origin.addingTimeInterval(-1),
+                    endedAt: origin.addingTimeInterval(30)
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .correctionOutsideSession)
+            }
+            XCTAssertThrowsError(
+                try repository.correctInterval(
+                    id: openInterval.id,
+                    kind: .focus,
+                    startedAt: origin.addingTimeInterval(30),
+                    endedAt: origin.addingTimeInterval(30)
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .invalidCorrectionRange)
+            }
+        }
+    }
+
     func testStaleTransitionRollsBackWithoutChangingHistory() throws {
         try withRepository { repository, _ in
             var engine = BreakBarEngine(policy: policy)
@@ -698,6 +819,31 @@ final class SessionRepositoryTests: XCTestCase {
         XCTAssertEqual(candidate.handle(command, at: date), .changed)
         try repository.commitTransition(from: previous, to: candidate.state, at: date)
         engine = candidate
+    }
+
+    private func createClosedCycle(in repository: SessionRepository) throws -> DailyHistory {
+        var engine = BreakBarEngine(policy: policy)
+        try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+        try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+        try commit(
+            .startBreak,
+            at: origin.addingTimeInterval(60),
+            engine: &engine,
+            repository: repository
+        )
+        try commit(
+            .returnToFocus,
+            at: origin.addingTimeInterval(80),
+            engine: &engine,
+            repository: repository
+        )
+        try commit(
+            .clockOut,
+            at: origin.addingTimeInterval(120),
+            engine: &engine,
+            repository: repository
+        )
+        return try repository.dailyHistory(on: origin, calendar: utcCalendar)
     }
 
     private func withRepository(
