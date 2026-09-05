@@ -96,9 +96,9 @@ and tests when the design document has drifted.
 - BreakBar is distributed outside the Mac App Store through GitHub Releases and
   the GitHub Pages site. Releases must be Developer ID-signed, hardened-runtime
   enabled, notarized by Apple, stapled, and shipped with a SHA-256 checksum.
-- Use `scripts/bump-version.sh patch|minor|major`; never hand-edit bundle version
-  fields. Build release notes from the complete change range since the previous
-  tag.
+- Use `scripts/bump-version.sh patch`, `scripts/bump-version.sh minor`, or
+  `scripts/bump-version.sh major`; never hand-edit bundle version fields. Build
+  release notes from the complete change range since the previous tag.
 - Prefer the protected GitHub Actions `Release` workflow. Keep a release draft
   until its target commit, assets, and recorded digest are correct. Never publish
   an unsigned fallback or a partially verified artifact.
