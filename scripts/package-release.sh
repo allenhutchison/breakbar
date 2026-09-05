@@ -37,6 +37,9 @@ xcrun stapler validate "$app_path"
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$release_archive"
 codesign --verify --deep --strict --verbose=2 "$app_path"
 spctl --assess --type execute --verbose=2 "$app_path"
-shasum -a 256 "$release_archive" > "$release_archive.sha256"
+(
+    cd "$release_dir"
+    shasum -a 256 "BreakBar.zip" > "BreakBar.zip.sha256"
+)
 
 echo "Packaged $release_archive"
