@@ -36,13 +36,19 @@ xcrun stapler staple "$app_path"
 xcrun stapler validate "$app_path"
 
 ditto -c -k --sequesterRsrc --keepParent "$app_path" "$release_archive"
+cleanup_verification_dir() {
+    local exit_status="$1"
+    rm -rf "$verification_dir" || true
+    trap - EXIT
+    exit "$exit_status"
+}
+trap 'cleanup_verification_dir "$?"' EXIT
 mkdir -p "$verification_dir"
 ditto -x -k "$release_archive" "$verification_dir"
 verified_app="$verification_dir/BreakBar.app"
 codesign --verify --deep --strict --verbose=2 "$verified_app"
 xcrun stapler validate "$verified_app"
 spctl --assess --type execute --verbose=2 "$verified_app"
-rm -rf "$verification_dir"
 (
     cd "$release_dir"
     shasum -a 256 "BreakBar.zip" > "BreakBar.zip.sha256"
