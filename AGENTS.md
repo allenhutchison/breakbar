@@ -54,12 +54,13 @@ and tests when the design document has drifted.
 - Run both commands for every code change. State-machine, scheduling, and
   persistence tests must use fixed dates and synthetic inputs rather than wall
   clock sleeps or live permissions.
-- For UI or integration changes, also test the actual app bundle. Terminate an
-  existing development instance before launching so two status items cannot be
-  mistaken for one broken app:
+- For UI or integration changes, also test the actual app bundle. Quit only the
+  specific development instance you launched before starting another; do not
+  use a name-wide kill command that could terminate an installed production
+  copy. Confirm with the maintainer if the development process cannot be
+  identified unambiguously. Then launch one development instance:
 
   ```sh
-  pkill -x BreakBar || true
   make run
   ```
 
