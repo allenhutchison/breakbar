@@ -17,4 +17,4 @@ Calendar access is read-only. BreakBar does not record microphone audio, store c
 ## Requirements
 
 - macOS 14 or later
-- Apple silicon Mac
+- Apple Silicon Mac

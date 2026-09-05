@@ -29,7 +29,7 @@ Before dispatching the `Release` workflow from `main`:
 
 1. Confirm CI passed for the release commit.
 2. Run `make test` and `make build` locally.
-3. Build and launch the release configuration locally, then verify clock in/out, the menu-bar countdown, Settings, calendar status, and Today’s history.
+3. Build and launch the release configuration locally, then verify clock-in/clock-out, the menu-bar countdown, Settings, calendar status, and Today’s history.
 4. Review `RELEASE_NOTES.md` and confirm the version with the maintainer.
 
 The workflow must finish signing, notarization, stapling, Gatekeeper assessment, and checksum generation before it creates the GitHub release. A failure must leave no unsigned public artifact or partially published release.

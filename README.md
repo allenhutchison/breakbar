@@ -4,7 +4,7 @@ BreakBar is a Mac-first menu-bar countdown that makes regular breaks hard to ign
 
 ## Download
 
-Signed and notarized builds are published on the [BreakBar releases page](https://github.com/allenhutchison/breakbar/releases/latest). BreakBar currently supports Apple silicon Macs running macOS 14 or later.
+Signed and notarized builds are published on the [BreakBar releases page](https://github.com/allenhutchison/breakbar/releases/latest). BreakBar currently supports Apple Silicon Macs running macOS 14 or later.
 
 The project website is published at [allenhutchison.github.io/breakbar](https://allenhutchison.github.io/breakbar/).
 
