@@ -2,6 +2,12 @@
 
 BreakBar is a Mac-first menu-bar countdown that makes regular breaks hard to ignore. It works without external hardware; optional accessories can mirror the current state and send the same typed commands as the Mac UI.
 
+## Download
+
+Signed and notarized builds are published on the [BreakBar releases page](https://github.com/allenhutchison/breakbar/releases/latest). BreakBar currently supports Apple Silicon Macs running macOS 14 or later.
+
+The project website is published at [allenhutchison.github.io/breakbar](https://allenhutchison.github.io/breakbar/).
+
 ## Run the app
 
 The current slice requires macOS 14 or newer and Swift 6.
@@ -34,6 +40,12 @@ An event whose title contains `Travel`, `Commute`, or `Drive` starts a travel ch
 make test
 make build
 ```
+
+## Release
+
+Public builds are created by the `Release` GitHub Actions workflow. It builds the release configuration, signs it with a Developer ID Application certificate, enables the hardened runtime, submits it to Apple for notarization, staples the resulting ticket, and publishes `BreakBar.zip` with its SHA-256 checksum to GitHub Releases.
+
+The release workflow requires the repository secrets documented in [the release guidelines](.claude/guidelines/release.md). It intentionally does not publish an unsigned fallback.
 
 The Makefile selects the installed Xcode beta because this machine’s currently selected standalone Command Line Tools contain a compiler/SDK mismatch. Override `DEVELOPER_DIR` when a stable matching Xcode is selected.
 

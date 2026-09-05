@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10151d">
+  <meta name="description" content="BreakBar is a meeting-aware focus and break timer for the Mac menu bar.">
+  <title>BreakBar — A meeting-aware break timer for Mac</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a class="wordmark" href="./" aria-label="BreakBar home">
+      <span class="wordmark-mark" aria-hidden="true">◷</span>
+      <span>BreakBar</span>
+    </a>
+    <a class="header-link" href="https://github.com/allenhutchison/breakbar">View on GitHub</a>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow">A thoughtful timer for your workday</p>
+        <h1 id="hero-title">Focus deeply.<br>Stop on time.</h1>
+        <p class="hero-summary">BreakBar keeps a steady countdown in your Mac menu bar, works around meetings, and makes it difficult to forget the break you meant to take.</p>
+        <div class="actions">
+          <a class="button button-primary" href="https://github.com/allenhutchison/breakbar/releases/latest">Download BreakBar</a>
+          <a class="button button-secondary" href="https://github.com/allenhutchison/breakbar#readme">How it works</a>
+        </div>
+        <p class="requirements">Free · macOS 14 or later · Apple Silicon</p>
+      </div>
+
+      <div class="timer-stage" aria-label="BreakBar menu bar countdown preview">
+        <div class="menu-preview">
+          <span class="menu-icon" aria-hidden="true">◷</span>
+          <span class="menu-time">49:26</span>
+        </div>
+        <div class="state-card state-focus">
+          <span class="state-label">Focus</span>
+          <strong>49:26</strong>
+          <span class="state-detail">until your next break</span>
+        </div>
+        <div class="state-strip">Take a break now</div>
+      </div>
+    </section>
+
+    <section class="features" aria-labelledby="features-title">
+      <div class="section-heading">
+        <p class="eyebrow">Built for real workdays</p>
+        <h2 id="features-title">A timer that notices what is happening.</h2>
+      </div>
+      <div class="feature-grid">
+        <article>
+          <span class="feature-number">01</span>
+          <h3>Meeting-aware</h3>
+          <p>Selected calendars and active calls keep BreakBar from interrupting a meeting. When a meeting runs over, the timer waits too.</p>
+        </article>
+        <article>
+          <span class="feature-number">02</span>
+          <h3>Hard to overlook</h3>
+          <p>A warning, sound, and full-screen prompt make the transition visible. A floating return panel stays present while you are away.</p>
+        </article>
+        <article>
+          <span class="feature-number">03</span>
+          <h3>Your day, recorded</h3>
+          <p>See today’s focus, meeting, lunch, travel, and break time. Correct clock-in times or classifications when the day changes shape.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="privacy" aria-labelledby="privacy-title">
+      <div>
+        <p class="eyebrow">Private by design</p>
+        <h2 id="privacy-title">Your workday stays on your Mac.</h2>
+      </div>
+      <div class="privacy-copy">
+        <p>BreakBar stores its timer state and history locally. It reads only the calendars you select, never edits events, and does not store calendar titles in timer history.</p>
+        <p>Call detection checks whether a recognized app is using microphone input. BreakBar never records or listens to microphone audio.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span>BreakBar</span>
+    <span>Free · Source available on GitHub</span>
+  </footer>
+</body>
+</html>
