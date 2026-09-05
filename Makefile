@@ -31,6 +31,7 @@ release-bundle:
 	test "$(SIGNING_IDENTITY)" != "-"
 	$(MAKE) bundle CONFIGURATION=release
 	codesign --force --timestamp --options runtime \
+		--generate-entitlement-der \
 		--sign "$(SIGNING_IDENTITY)" \
 		--identifier app.breakbar.mac \
 		--entitlements $(CURDIR)/Support/BreakBar.entitlements $(APP_BUNDLE)
