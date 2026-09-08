@@ -29,5 +29,9 @@ let package = Package(
             name: "BreakBarPersistenceTests",
             dependencies: ["BreakBarCore", "BreakBarPersistence", "CSQLite"]
         ),
+        .testTarget(
+            name: "BreakBarAppTests",
+            dependencies: ["BreakBarApp"]
+        ),
     ]
 )

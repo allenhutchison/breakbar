@@ -51,7 +51,7 @@ final class AwayReturnPanelController {
         panel.contentViewController = NSHostingController(
             rootView: AwayReturnPanelView(state: panelState)
         )
-        position(panel, size: panelSize)
+        ModalPanelPositioning.center(panel, size: panelSize)
         panel.orderFrontRegardless()
 
         self.panelState = panelState
@@ -62,20 +62,6 @@ final class AwayReturnPanelController {
         panel?.orderOut(nil)
         panel = nil
         panelState = nil
-    }
-
-    private func position(_ panel: NSPanel, size: NSSize) {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
-            panel.center()
-            return
-        }
-        let visibleFrame = screen.visibleFrame
-        panel.setFrameOrigin(
-            NSPoint(
-                x: visibleFrame.midX - size.width / 2,
-                y: visibleFrame.maxY - size.height - 28
-            )
-        )
     }
 }
 
