@@ -52,7 +52,7 @@ final class BreakReturnPanelController {
         panel.contentViewController = NSHostingController(
             rootView: BreakReturnPanelView(state: panelState)
         )
-        position(panel, size: panelSize)
+        ModalPanelPositioning.center(panel)
         panel.orderFrontRegardless()
 
         self.panelState = panelState
@@ -63,20 +63,6 @@ final class BreakReturnPanelController {
         panel?.orderOut(nil)
         panel = nil
         panelState = nil
-    }
-
-    private func position(_ panel: NSPanel, size: NSSize) {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
-            panel.center()
-            return
-        }
-        let visibleFrame = screen.visibleFrame
-        panel.setFrameOrigin(
-            NSPoint(
-                x: visibleFrame.midX - size.width / 2,
-                y: visibleFrame.maxY - size.height - 28
-            )
-        )
     }
 }
 

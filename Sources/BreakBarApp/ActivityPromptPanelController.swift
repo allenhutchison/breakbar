@@ -54,7 +54,7 @@ final class ActivityPromptPanelController {
                 secondaryAction: secondaryAction
             )
         )
-        position(panel, size: panelSize)
+        ModalPanelPositioning.center(panel)
         panel.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         promptKey = key
@@ -65,20 +65,6 @@ final class ActivityPromptPanelController {
         panel?.orderOut(nil)
         panel = nil
         promptKey = nil
-    }
-
-    private func position(_ panel: NSPanel, size: NSSize) {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
-            panel.center()
-            return
-        }
-        let visibleFrame = screen.visibleFrame
-        panel.setFrameOrigin(
-            NSPoint(
-                x: visibleFrame.midX - size.width / 2,
-                y: visibleFrame.midY - size.height / 2
-            )
-        )
     }
 }
 
