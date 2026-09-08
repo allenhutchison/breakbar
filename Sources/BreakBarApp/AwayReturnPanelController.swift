@@ -51,7 +51,7 @@ final class AwayReturnPanelController {
         panel.contentViewController = NSHostingController(
             rootView: AwayReturnPanelView(state: panelState)
         )
-        ModalPanelPositioning.center(panel, size: panelSize)
+        ModalPanelPositioning.center(panel)
         panel.orderFrontRegardless()
 
         self.panelState = panelState

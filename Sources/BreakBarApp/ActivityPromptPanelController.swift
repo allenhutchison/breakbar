@@ -54,7 +54,7 @@ final class ActivityPromptPanelController {
                 secondaryAction: secondaryAction
             )
         )
-        ModalPanelPositioning.center(panel, size: panelSize)
+        ModalPanelPositioning.center(panel)
         panel.makeKeyAndOrderFront(nil)
         NSApplication.shared.activate(ignoringOtherApps: true)
         promptKey = key

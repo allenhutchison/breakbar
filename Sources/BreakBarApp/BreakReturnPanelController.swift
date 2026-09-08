@@ -52,7 +52,7 @@ final class BreakReturnPanelController {
         panel.contentViewController = NSHostingController(
             rootView: BreakReturnPanelView(state: panelState)
         )
-        ModalPanelPositioning.center(panel, size: panelSize)
+        ModalPanelPositioning.center(panel)
         panel.orderFrontRegardless()
 
         self.panelState = panelState
