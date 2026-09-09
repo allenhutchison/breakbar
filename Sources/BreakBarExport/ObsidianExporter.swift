@@ -5,6 +5,7 @@ import Foundation
 public enum ObsidianExportError: Error, Equatable, LocalizedError, Sendable {
     case folderUnavailable
     case invalidFilenameFormat
+    case unsafePathComponent
     case unsupportedNoteType
     case noteIsNotUTF8
     case markerConflict
@@ -17,6 +18,8 @@ public enum ObsidianExportError: Error, Equatable, LocalizedError, Sendable {
             "The selected daily-notes folder is unavailable."
         case .invalidFilenameFormat:
             "The note path format must stay within the selected folder and produce a valid filename."
+        case .unsafePathComponent:
+            "The note path contains a symbolic link or a folder component that is not a directory."
         case .unsupportedNoteType:
             "The daily note must be a regular file, not a symbolic link or directory."
         case .noteIsNotUTF8:
@@ -71,14 +74,12 @@ public struct ObsidianExporter: Sendable {
             filenameFormat: filenameFormat,
             calendar: calendar
         )
-        do {
-            try fileManager.createDirectory(
-                at: noteURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true
-            )
-        } catch {
-            throw ObsidianExportError.writeFailed(error.localizedDescription)
-        }
+        try ensureSafeParentDirectory(
+            for: noteURL,
+            inside: folderURL,
+            createMissing: true,
+            fileManager: fileManager
+        )
         let originalData: Data?
         if fileManager.fileExists(atPath: noteURL.path) {
             do {
@@ -122,6 +123,7 @@ public struct ObsidianExporter: Sendable {
         try writeAtomically(
             Data(updated.utf8),
             to: noteURL,
+            inside: folderURL,
             replacing: originalData,
             fileManager: fileManager
         )
@@ -245,6 +247,7 @@ public struct ObsidianExporter: Sendable {
     private func writeAtomically(
         _ data: Data,
         to noteURL: URL,
+        inside folderURL: URL,
         replacing originalData: Data?,
         fileManager: FileManager
     ) throws {
@@ -278,6 +281,12 @@ public struct ObsidianExporter: Sendable {
                 throw error
             }
 
+            try ensureSafeParentDirectory(
+                for: noteURL,
+                inside: folderURL,
+                createMissing: false,
+                fileManager: fileManager
+            )
             try verifyDestinationUnchanged(
                 at: noteURL,
                 from: originalData,
@@ -300,6 +309,66 @@ public struct ObsidianExporter: Sendable {
         } catch {
             throw ObsidianExportError.writeFailed(error.localizedDescription)
         }
+    }
+
+    private func ensureSafeParentDirectory(
+        for noteURL: URL,
+        inside folderURL: URL,
+        createMissing: Bool,
+        fileManager: FileManager
+    ) throws {
+        let rootComponents = folderURL.standardizedFileURL.pathComponents
+        let parentComponents = noteURL.deletingLastPathComponent()
+            .standardizedFileURL.pathComponents
+        guard parentComponents.starts(with: rootComponents) else {
+            throw ObsidianExportError.invalidFilenameFormat
+        }
+
+        var currentURL = folderURL
+        for component in parentComponents.dropFirst(rootComponents.count) {
+            currentURL.appendPathComponent(component, isDirectory: true)
+            switch try entryType(at: currentURL) {
+            case .directory:
+                continue
+            case .missing where createMissing:
+                do {
+                    try fileManager.createDirectory(
+                        at: currentURL,
+                        withIntermediateDirectories: false
+                    )
+                } catch {
+                    guard try entryType(at: currentURL) == .directory else {
+                        throw ObsidianExportError.writeFailed(error.localizedDescription)
+                    }
+                }
+            case .missing, .symbolicLink, .other:
+                throw ObsidianExportError.unsafePathComponent
+            }
+        }
+    }
+
+    private func entryType(at url: URL) throws -> FileSystemEntryType {
+        var information = stat()
+        let result: (status: Int32, errorNumber: Int32) =
+            url.withUnsafeFileSystemRepresentation { path in
+                guard let path else { return (-1, EINVAL) }
+                let status = Darwin.lstat(path, &information)
+                return (status, status == 0 ? 0 : errno)
+            }
+        if result.status == 0 {
+            switch information.st_mode & S_IFMT {
+            case S_IFDIR:
+                return .directory
+            case S_IFLNK:
+                return .symbolicLink
+            default:
+                return .other
+            }
+        }
+        if result.errorNumber == ENOENT {
+            return .missing
+        }
+        throw POSIXError(POSIXErrorCode(rawValue: result.errorNumber) ?? .EIO)
     }
 
     private func verifyDestinationUnchanged(
@@ -359,6 +428,13 @@ public struct ObsidianExporter: Sendable {
         case .away: "Away"
         }
     }
+}
+
+private enum FileSystemEntryType {
+    case missing
+    case directory
+    case symbolicLink
+    case other
 }
 
 private extension String {

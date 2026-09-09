@@ -270,6 +270,39 @@ final class ObsidianExporterTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: targetURL, encoding: .utf8), "Personal text.\n")
     }
 
+    func testSymbolicLinkDateDirectoryIsRejectedWithoutWritingThroughIt() throws {
+        let outsideDirectory = FileManager.default.temporaryDirectory.appendingPathComponent(
+            "BreakBarExportOutsideTests-\(UUID().uuidString)",
+            isDirectory: true
+        )
+        try FileManager.default.createDirectory(
+            at: outsideDirectory,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(at: outsideDirectory) }
+        try FileManager.default.createSymbolicLink(
+            at: temporaryDirectory.appendingPathComponent("2026", isDirectory: true),
+            withDestinationURL: outsideDirectory
+        )
+
+        XCTAssertThrowsError(
+            try ObsidianExporter().export(
+                history: sampleHistory(),
+                at: date("2026-09-08T17:36:00Z"),
+                to: temporaryDirectory,
+                filenameFormat: "yyyy/MM/yyyy-MM-dd",
+                calendar: utcCalendar
+            )
+        ) { error in
+            XCTAssertEqual(error as? ObsidianExportError, .unsafePathComponent)
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: outsideDirectory.appendingPathComponent("09/2026-09-08.md").path
+            )
+        )
+    }
+
     private func sampleHistory() -> DailyHistory {
         let dayStart = date("2026-09-08T00:00:00Z")
         let updatedAt = date("2026-09-08T10:47:00Z")
