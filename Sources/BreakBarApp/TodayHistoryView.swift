@@ -167,9 +167,11 @@ struct TodayHistoryView: View {
             }
             .disabled(!model.canExportToday)
             .help(
-                model.obsidianDailyNotesFolderURL == nil
-                    ? "Choose an Obsidian daily-notes folder in Settings first"
-                    : "Export today’s history to Obsidian"
+                model.isDemoMode
+                    ? "Obsidian export is unavailable in demo mode"
+                    : model.obsidianDailyNotesFolderURL == nil
+                        ? "Choose an Obsidian daily-notes folder in Settings first"
+                        : "Export today’s history to Obsidian"
             )
             Button {
                 model.refreshTodayHistory()
