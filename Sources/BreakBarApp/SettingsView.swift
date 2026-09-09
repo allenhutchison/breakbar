@@ -164,9 +164,14 @@ private struct ObsidianNotePathFormatRow: View {
                 .onChange(of: model.obsidianFilenameFormat) { _, format in
                     if !isFocused { text = format }
                 }
+                .help(formatHelpText)
                 .accessibilityLabel("Note path format")
-                .accessibilityHint("Uses Apple date format symbols and may include subfolders. The Markdown extension is added automatically.")
+                .accessibilityHint(formatHelpText)
         }
+    }
+
+    private var formatHelpText: String {
+        "Uses Apple date format symbols and may include subfolders. Quote literal folder names containing letters, for example 'Daily'/yyyy/MM/yyyy-MM-dd. The Markdown extension is added automatically."
     }
 
     private func commit() {
