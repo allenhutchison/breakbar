@@ -293,14 +293,16 @@ public struct ObsidianExporter: Sendable {
                 fileManager: fileManager
             )
 
-            let renameResult: Int32 = temporaryURL.withUnsafeFileSystemRepresentation { source in
-                noteURL.withUnsafeFileSystemRepresentation { destination in
-                    guard let source, let destination else { return Int32(-1) }
-                    return Darwin.rename(source, destination)
+            let renameResult: (status: Int32, errorNumber: Int32) =
+                temporaryURL.withUnsafeFileSystemRepresentation { source in
+                    noteURL.withUnsafeFileSystemRepresentation { destination in
+                        guard let source, let destination else { return (-1, EINVAL) }
+                        let status = Darwin.rename(source, destination)
+                        return (status, status == 0 ? 0 : errno)
+                    }
                 }
-            }
-            guard renameResult == 0 else {
-                let code = POSIXErrorCode(rawValue: errno) ?? .EIO
+            guard renameResult.status == 0 else {
+                let code = POSIXErrorCode(rawValue: renameResult.errorNumber) ?? .EIO
                 throw POSIXError(code)
             }
             synchronizeDirectory(noteURL.deletingLastPathComponent())
