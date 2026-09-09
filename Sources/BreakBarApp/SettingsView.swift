@@ -82,6 +82,8 @@ struct SettingsView: View {
                 monitor: model.callActivityMonitor
             )
 
+            ObsidianSettingsSection(model: model)
+
             Section("Accessories") {
                 Text("No accessories installed")
                 Text("BUSY Bar support will be added as an optional plugin after hardware validation.")
@@ -91,6 +93,91 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .frame(width: 520, height: 680)
+    }
+}
+
+private struct ObsidianSettingsSection: View {
+    @ObservedObject var model: AppModel
+
+    var body: some View {
+        Section("Obsidian") {
+            if model.isDemoMode {
+                Text("Obsidian export is unavailable in demo mode so accelerated history never enters normal daily notes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                LabeledContent("Daily notes folder", value: model.obsidianFolderDisplayName)
+
+                HStack {
+                    Button("Choose Folder", action: model.chooseObsidianDailyNotesFolder)
+                    if model.obsidianDailyNotesFolderURL != nil {
+                        Button("Remove", role: .destructive, action: model.removeObsidianDailyNotesFolder)
+                    }
+                }
+
+                ObsidianNotePathFormatRow(model: model)
+                LabeledContent("Example", value: model.obsidianFilenameExample)
+
+                Button("Export Today Now", action: model.exportTodayHistory)
+                    .disabled(!model.canExportToday)
+
+                if let message = model.obsidianExportMessage {
+                    Label(
+                        message,
+                        systemImage: model.obsidianExportMessageIsError
+                            ? "exclamationmark.triangle.fill"
+                            : "checkmark.circle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(model.obsidianExportMessageIsError ? Color.red : Color.secondary)
+                }
+
+                Text("BreakBar creates or replaces only its marked section. Exports also run after clock-out and history corrections; failures never block timer or history changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct ObsidianNotePathFormatRow: View {
+    @ObservedObject var model: AppModel
+    @State private var text: String
+    @FocusState private var isFocused: Bool
+
+    init(model: AppModel) {
+        self.model = model
+        _text = State(initialValue: model.obsidianFilenameFormat)
+    }
+
+    var body: some View {
+        LabeledContent("Note path format") {
+            TextField("", text: $text)
+                .textFieldStyle(.roundedBorder)
+                .font(.system(.body, design: .monospaced))
+                .frame(width: 170)
+                .focused($isFocused)
+                .onSubmit(commit)
+                .onChange(of: isFocused) { _, focused in
+                    if !focused { commit() }
+                }
+                .onChange(of: model.obsidianFilenameFormat) { _, format in
+                    if !isFocused { text = format }
+                }
+                .help(formatHelpText)
+                .accessibilityLabel("Note path format")
+                .accessibilityHint(formatHelpText)
+        }
+    }
+
+    private var formatHelpText: String {
+        "Uses Apple date format symbols and may include subfolders. Quote literal folder names containing letters, for example 'Daily'/yyyy/MM/yyyy-MM-dd. The Markdown extension is added automatically."
+    }
+
+    private func commit() {
+        if !model.setObsidianFilenameFormat(text) {
+            text = model.obsidianFilenameFormat
+        }
     }
 }
 

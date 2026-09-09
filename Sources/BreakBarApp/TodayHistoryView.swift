@@ -36,6 +36,18 @@ struct TodayHistoryView: View {
             VStack(alignment: .leading, spacing: 22) {
                 header(history)
 
+                if let message = model.obsidianExportMessage {
+                    Label(
+                        message,
+                        systemImage: model.obsidianExportMessageIsError
+                            ? "exclamationmark.triangle.fill"
+                            : "checkmark.circle.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(model.obsidianExportMessageIsError ? Color.red : Color.secondary)
+                    .onTapGesture(perform: model.clearObsidianExportMessage)
+                }
+
                 LazyVGrid(columns: columns, spacing: 10) {
                     SummaryCard(title: "Clocked in", duration: summary.clockedIn, color: .primary)
                     SummaryCard(title: "Working", duration: summary.working, color: .blue)
@@ -148,6 +160,19 @@ struct TodayHistoryView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Button {
+                model.exportTodayHistory()
+            } label: {
+                Label("Export", systemImage: "square.and.arrow.up")
+            }
+            .disabled(!model.canExportToday)
+            .help(
+                model.isDemoMode
+                    ? "Obsidian export is unavailable in demo mode"
+                    : model.obsidianDailyNotesFolderURL == nil
+                        ? "Choose an Obsidian daily-notes folder in Settings first"
+                        : "Export today’s history to Obsidian"
+            )
             Button {
                 model.refreshTodayHistory()
             } label: {
