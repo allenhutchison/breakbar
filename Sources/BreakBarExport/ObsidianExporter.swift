@@ -48,6 +48,7 @@ public struct ObsidianExporter: Sendable {
     public static let startMarker = "<!-- breakbar:start -->"
     public static let endMarker = "<!-- breakbar:end -->"
     public static let defaultFilenameFormat = "yyyy-MM-dd"
+    private static let replacementLock = NSLock()
 
     public init() {}
 
@@ -281,36 +282,55 @@ public struct ObsidianExporter: Sendable {
                 throw error
             }
 
-            try ensureSafeParentDirectory(
-                for: noteURL,
-                inside: folderURL,
-                createMissing: false,
+            try replaceWhileLocked(
+                temporaryURL: temporaryURL,
+                noteURL: noteURL,
+                folderURL: folderURL,
+                originalData: originalData,
                 fileManager: fileManager
             )
-            try verifyDestinationUnchanged(
-                at: noteURL,
-                from: originalData,
-                fileManager: fileManager
-            )
-
-            let renameResult: (status: Int32, errorNumber: Int32) =
-                temporaryURL.withUnsafeFileSystemRepresentation { source in
-                    noteURL.withUnsafeFileSystemRepresentation { destination in
-                        guard let source, let destination else { return (-1, EINVAL) }
-                        let status = Darwin.rename(source, destination)
-                        return (status, status == 0 ? 0 : errno)
-                    }
-                }
-            guard renameResult.status == 0 else {
-                let code = POSIXErrorCode(rawValue: renameResult.errorNumber) ?? .EIO
-                throw POSIXError(code)
-            }
-            synchronizeDirectory(noteURL.deletingLastPathComponent())
         } catch let error as ObsidianExportError {
             throw error
         } catch {
             throw ObsidianExportError.writeFailed(error.localizedDescription)
         }
+    }
+
+    private func replaceWhileLocked(
+        temporaryURL: URL,
+        noteURL: URL,
+        folderURL: URL,
+        originalData: Data?,
+        fileManager: FileManager
+    ) throws {
+        Self.replacementLock.lock()
+        defer { Self.replacementLock.unlock() }
+
+        try ensureSafeParentDirectory(
+            for: noteURL,
+            inside: folderURL,
+            createMissing: false,
+            fileManager: fileManager
+        )
+        try verifyDestinationUnchanged(
+            at: noteURL,
+            from: originalData,
+            fileManager: fileManager
+        )
+
+        let renameResult: (status: Int32, errorNumber: Int32) =
+            temporaryURL.withUnsafeFileSystemRepresentation { source in
+                noteURL.withUnsafeFileSystemRepresentation { destination in
+                    guard let source, let destination else { return (-1, EINVAL) }
+                    let status = Darwin.rename(source, destination)
+                    return (status, status == 0 ? 0 : errno)
+                }
+            }
+        guard renameResult.status == 0 else {
+            let code = POSIXErrorCode(rawValue: renameResult.errorNumber) ?? .EIO
+            throw POSIXError(code)
+        }
+        synchronizeDirectory(noteURL.deletingLastPathComponent())
     }
 
     private func ensureSafeParentDirectory(
