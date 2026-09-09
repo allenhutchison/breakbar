@@ -1,5 +1,6 @@
 import AppKit
 import BreakBarCore
+import BreakBarExport
 import BreakBarPersistence
 import Combine
 import Foundation
@@ -17,6 +18,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var policy: BreakPolicy
     @Published private(set) var todayHistory: DailyHistory?
     @Published private(set) var historyMessage: String?
+    @Published private(set) var obsidianDailyNotesFolderURL: URL?
+    @Published private(set) var obsidianFilenameFormat: String
+    @Published private(set) var obsidianExportMessage: String?
+    @Published private(set) var obsidianExportMessageIsError: Bool
 
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
@@ -82,6 +87,14 @@ final class AppModel: ObservableObject {
         )
         todayHistory = initialHistory
         historyMessage = initialHistoryMessage
+        obsidianDailyNotesFolderURL = UserDefaults.standard.string(
+            forKey: Self.obsidianDailyNotesFolderKey
+        ).map { URL(fileURLWithPath: $0, isDirectory: true) }
+        obsidianFilenameFormat = UserDefaults.standard.string(
+            forKey: Self.obsidianFilenameFormatKey
+        ) ?? ObsidianExporter.defaultFilenameFormat
+        obsidianExportMessage = nil
+        obsidianExportMessageIsError = false
         refreshLaunchAtLoginStatus()
 
         calendarMonitor.$schedulingConstraints
@@ -288,6 +301,7 @@ final class AppModel: ObservableObject {
             endedAt: endedAt
         )
         refreshTodayHistory()
+        exportConfiguredHistory(on: Date())
     }
 
     func correctWorkSession(
@@ -304,6 +318,7 @@ final class AppModel: ObservableObject {
             endedAt: endedAt
         )
         refreshTodayHistory()
+        exportConfiguredHistory(on: Date())
     }
 
     func correctActiveWorkSessionClockIn(
@@ -345,6 +360,7 @@ final class AppModel: ObservableObject {
         now = eventDate
         lastMessage = nil
         refreshTodayHistory()
+        exportConfiguredHistory(on: eventDate)
 
         if state.phase == .focusing {
             applyCurrentCalendarConstraints(at: eventDate)
@@ -372,6 +388,118 @@ final class AppModel: ObservableObject {
         } catch {
             todayHistory = nil
             historyMessage = "BreakBar could not load today’s history: \(error.localizedDescription)"
+        }
+    }
+
+    var obsidianFolderDisplayName: String {
+        obsidianDailyNotesFolderURL?.lastPathComponent ?? "Not selected"
+    }
+
+    var obsidianFilenameExample: String {
+        do {
+            let rootURL = URL(fileURLWithPath: "/", isDirectory: true)
+            let noteURL = try ObsidianExporter().noteURL(
+                for: now,
+                in: rootURL,
+                filenameFormat: obsidianFilenameFormat
+            )
+            return String(noteURL.path.dropFirst(rootURL.path.count))
+        } catch {
+            return "Invalid format"
+        }
+    }
+
+    var canExportToday: Bool {
+        !isDemoMode && obsidianDailyNotesFolderURL != nil && todayHistory != nil
+    }
+
+    func chooseObsidianDailyNotesFolder() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Obsidian Daily Notes Folder"
+        panel.prompt = "Choose"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
+
+        let folderURL = selectedURL.standardizedFileURL
+        obsidianDailyNotesFolderURL = folderURL
+        UserDefaults.standard.set(folderURL.path, forKey: Self.obsidianDailyNotesFolderKey)
+        clearObsidianExportMessage()
+    }
+
+    func removeObsidianDailyNotesFolder() {
+        obsidianDailyNotesFolderURL = nil
+        UserDefaults.standard.removeObject(forKey: Self.obsidianDailyNotesFolderKey)
+        clearObsidianExportMessage()
+    }
+
+    @discardableResult
+    func setObsidianFilenameFormat(_ format: String) -> Bool {
+        let trimmed = format.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            _ = try ObsidianExporter().noteURL(
+                for: now,
+                in: URL(fileURLWithPath: "/", isDirectory: true),
+                filenameFormat: trimmed
+            )
+            obsidianFilenameFormat = trimmed
+            UserDefaults.standard.set(trimmed, forKey: Self.obsidianFilenameFormatKey)
+            clearObsidianExportMessage()
+            return true
+        } catch {
+            obsidianExportMessage = error.localizedDescription
+            obsidianExportMessageIsError = true
+            return false
+        }
+    }
+
+    func exportTodayHistory() {
+        guard !isDemoMode else {
+            obsidianExportMessage = "Demo history is kept separate and cannot be exported."
+            obsidianExportMessageIsError = true
+            return
+        }
+        guard obsidianDailyNotesFolderURL != nil else {
+            obsidianExportMessage = "Choose an Obsidian daily-notes folder first."
+            obsidianExportMessageIsError = true
+            return
+        }
+        exportConfiguredHistory(on: Date())
+    }
+
+    func clearObsidianExportMessage() {
+        obsidianExportMessage = nil
+        obsidianExportMessageIsError = false
+    }
+
+    private func exportConfiguredHistory(on date: Date) {
+        guard !isDemoMode, let folderURL = obsidianDailyNotesFolderURL else { return }
+        guard let repository else {
+            let message = "The history database is unavailable."
+            obsidianExportMessage = message
+            obsidianExportMessageIsError = true
+            lastMessage = "Obsidian export failed: \(message)"
+            return
+        }
+
+        do {
+            let history = try repository.dailyHistory(on: date)
+            let result = try ObsidianExporter().export(
+                history: history,
+                at: date,
+                to: folderURL,
+                filenameFormat: obsidianFilenameFormat
+            )
+            obsidianExportMessage = result.changed
+                ? "Exported \(result.noteURL.lastPathComponent)."
+                : "\(result.noteURL.lastPathComponent) is already up to date."
+            obsidianExportMessageIsError = false
+        } catch {
+            obsidianExportMessage = error.localizedDescription
+            obsidianExportMessageIsError = true
+            lastMessage = "Obsidian export failed: \(error.localizedDescription)"
         }
     }
 
@@ -604,6 +732,8 @@ final class AppModel: ObservableObject {
     private static let idleThresholdKey = "policy.idleThreshold"
     private static let handledLunchPromptOccurrenceKey =
         "calendar.handledLunchPromptOccurrence"
+    private static let obsidianDailyNotesFolderKey = "obsidian.dailyNotesFolder"
+    private static let obsidianFilenameFormatKey = "obsidian.filenameFormat"
 
     private static let demoPolicy = BreakPolicy(
         focusDuration: 60,
@@ -736,6 +866,9 @@ final class AppModel: ObservableObject {
             state = candidate.state
             lastMessage = nil
             refreshTodayHistory()
+            if previousState.phase != .clockedOut, state.phase == .clockedOut {
+                exportConfiguredHistory(on: eventDate)
+            }
         }
         if previousState.enforcement != .warning && state.enforcement == .warning {
             WarningNotifier.deliver(
