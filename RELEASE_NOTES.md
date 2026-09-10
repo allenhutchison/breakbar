@@ -1,18 +1,17 @@
-# BreakBar 0.2.0
+# BreakBar 0.3.0
 
-BreakBar 0.2.0 expands the original menu-bar timer into a workday companion that can plan around meetings and keep an accurate local history.
+BreakBar 0.3.0 adds first-party Obsidian export, improves prompt placement, and restores calendar authorization.
 
 ## Highlights
 
-- Plans focus intervals around selected calendars, active calls, lunch, travel, and offsite meetings. Meeting overruns remain protected until the meeting actually ends.
-- Keeps the focus, warning, and break countdowns stable in the menu bar, with notifications and sound when the warning begins.
-- Adds configurable focus, warning, minimum-break, and idle-away durations.
-- Shows a persistent return panel during breaks, makes a best-effort attempt to pause Apple Music or Spotify, and prompts after idle time when you may have forgotten to clock in.
-- Adds a local daily history with focus, meeting, lunch, travel, and break totals. Work sessions and completed activities can be corrected when a time or classification is wrong.
+- Exports Today’s History into Obsidian daily notes while preserving content outside BreakBar’s marked section.
+- Supports configurable date-based note paths, manual exports, and automatic exports after clock-out or history corrections.
+- Centers activity and return prompts on the active display.
+- Restores Calendar connection in signed builds by including the required macOS entitlement.
 
 ## Privacy
 
-Calendar access is read-only. BreakBar does not record microphone audio, store calendar titles in timer history, or require an account.
+Calendar access remains read-only. BreakBar writes only to the selected Obsidian folder and does not store calendar titles in timer history.
 
 ## Requirements
 
