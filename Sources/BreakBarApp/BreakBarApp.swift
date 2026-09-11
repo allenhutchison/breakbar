@@ -11,7 +11,10 @@ struct BreakBarApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView(model: appDelegate.model)
+            SettingsView(
+                model: appDelegate.model,
+                checkForUpdates: appDelegate.checkForUpdates
+            )
         }
     }
 }

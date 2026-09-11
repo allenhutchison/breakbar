@@ -25,6 +25,7 @@ jobs:
       NOTARY_KEY_BASE64: ${{ secrets.APPLE_NOTARY_KEY_BASE64 }}
       NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
       NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_EDDSA_PRIVATE_KEY }}
       GH_TOKEN: ${{ github.token }}
 
     steps:
@@ -42,6 +43,7 @@ jobs:
           test -n "$NOTARY_KEY_BASE64"
           test -n "$NOTARY_KEY_ID"
           test -n "$NOTARY_ISSUER_ID"
+          test -n "$SPARKLE_PRIVATE_KEY"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Support/Info.plist)" = "$RELEASE_VERSION"
           grep -Fqx "# BreakBar $RELEASE_VERSION" RELEASE_NOTES.md
 
@@ -81,6 +83,7 @@ jobs:
           gh release create "$tag" \
             .build/release/BreakBar.zip \
             .build/release/BreakBar.zip.sha256 \
+            .build/release/appcast.xml \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "BreakBar $RELEASE_VERSION" \

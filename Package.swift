@@ -11,6 +11,12 @@ let package = Package(
         .library(name: "BreakBarPersistence", targets: ["BreakBarPersistence"]),
         .library(name: "BreakBarExport", targets: ["BreakBarExport"]),
     ],
+    dependencies: [
+        .package(
+            url: "https://github.com/sparkle-project/Sparkle",
+            exact: "2.9.2"
+        ),
+    ],
     targets: [
         .systemLibrary(name: "CSQLite"),
         .target(name: "BreakBarCore"),
@@ -24,7 +30,18 @@ let package = Package(
         ),
         .executableTarget(
             name: "BreakBarApp",
-            dependencies: ["BreakBarCore", "BreakBarPersistence", "BreakBarExport"]
+            dependencies: [
+                "BreakBarCore",
+                "BreakBarPersistence",
+                "BreakBarExport",
+                .product(name: "Sparkle", package: "Sparkle"),
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@executable_path/../Frameworks",
+                ]),
+            ]
         ),
         .testTarget(
             name: "BreakBarCoreTests",
@@ -40,7 +57,13 @@ let package = Package(
         ),
         .testTarget(
             name: "BreakBarAppTests",
-            dependencies: ["BreakBarApp"]
+            dependencies: ["BreakBarApp"],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath",
+                    "-Xlinker", "@loader_path/../../..",
+                ]),
+            ]
         ),
     ]
 )

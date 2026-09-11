@@ -11,6 +11,7 @@ Create a protected `release` environment and add these repository or environment
 - `APPLE_NOTARY_KEY_BASE64`: Base64-encoded App Store Connect API private key (`.p8`) with access to notarization.
 - `APPLE_NOTARY_KEY_ID`: App Store Connect API key ID.
 - `APPLE_NOTARY_ISSUER_ID`: App Store Connect issuer ID.
+- `SPARKLE_EDDSA_PRIVATE_KEY`: Private key exported from Sparkle's `generate_keys` tool for signing update archives. Keep the matching public key in `Support/Info.plist`.
 
 Restrict the `release` environment to the `main` branch and require approval before deployment. Never place signing material in the repository, workflow artifacts, release notes, or logs.
 
@@ -32,4 +33,4 @@ Before dispatching the `Release` workflow from `main`:
 3. Build and launch the release configuration locally, then verify clock-in/clock-out, the menu-bar countdown, Settings, calendar status, and Today’s history.
 4. Review `RELEASE_NOTES.md` and confirm the version with the maintainer.
 
-The workflow must finish signing, notarization, stapling, Gatekeeper assessment, and checksum generation before it creates the GitHub release. A failure must leave no unsigned public artifact or partially published release.
+The workflow must finish signing, notarization, stapling, Gatekeeper assessment, checksum generation, and EdDSA appcast generation before it creates the GitHub release. A failure must leave no unsigned public artifact or partially published release. The published release must contain `BreakBar.zip`, `BreakBar.zip.sha256`, and `appcast.xml`; the app reads the appcast through GitHub's latest-release asset URL.

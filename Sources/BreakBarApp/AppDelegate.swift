@@ -1,12 +1,18 @@
 import AppKit
 import BreakBarCore
 import Combine
+import Sparkle
 import SwiftUI
 @preconcurrency import UserNotifications
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let model = AppModel()
+    private let updaterController = SPUStandardUpdaterController(
+        startingUpdater: true,
+        updaterDelegate: nil,
+        userDriverDelegate: nil
+    )
 
     private let compactStatusItemWidth: CGFloat = 62
     private let longTimerStatusItemWidth: CGFloat = 70
@@ -49,6 +55,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         false
     }
 
+    func checkForUpdates() {
+        updaterController.checkForUpdates(nil)
+    }
+
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: compactStatusItemWidth)
         guard let button = item.button else { return }
@@ -62,7 +72,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func configurePopover() {
-        let content = BreakBarMenuView(model: model)
+        let content = BreakBarMenuView(
+            model: model,
+            checkForUpdates: checkForUpdates
+        )
             .fixedSize(horizontal: false, vertical: true)
         let hostingController = NSHostingController(rootView: content)
         hostingController.view.layoutSubtreeIfNeeded()
