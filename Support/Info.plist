@@ -36,5 +36,7 @@
 	<string>https://github.com/allenhutchison/breakbar/releases/latest/download/appcast.xml</string>
 	<key>SUPublicEDKey</key>
 	<string>tORKGqB9/M2ZCIBmczsjADURcOmLdG7y/Hn9zkzioA8=</string>
+	<key>SUVerifyUpdateBeforeExtraction</key>
+	<true/>
 </dict>
 </plist>

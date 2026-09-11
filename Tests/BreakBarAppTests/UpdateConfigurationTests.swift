@@ -9,6 +9,7 @@ final class UpdateConfigurationTests: XCTestCase {
 
         XCTAssertEqual(info["SUEnableAutomaticChecks"] as? Bool, true)
         XCTAssertEqual(info["SUAutomaticallyUpdate"] as? Bool, true)
+        XCTAssertEqual(info["SUVerifyUpdateBeforeExtraction"] as? Bool, true)
 
         let feedURL = try XCTUnwrap(
             URL(string: try XCTUnwrap(info["SUFeedURL"] as? String))

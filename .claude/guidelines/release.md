@@ -11,7 +11,7 @@ Create a protected `release` environment and add these repository or environment
 - `APPLE_NOTARY_KEY_BASE64`: Base64-encoded App Store Connect API private key (`.p8`) with access to notarization.
 - `APPLE_NOTARY_KEY_ID`: App Store Connect API key ID.
 - `APPLE_NOTARY_ISSUER_ID`: App Store Connect issuer ID.
-- `SPARKLE_EDDSA_PRIVATE_KEY`: Private key exported from Sparkle's `generate_keys` tool for signing update archives. Keep the matching public key in `Support/Info.plist`.
+- `SPARKLE_EDDSA_PRIVATE_KEY`: Private key exported from Sparkle's `generate_keys` tool for signing update archives. Keep the matching public key in `Support/Info.plist` and preserve the private key in the login keychain and this protected secret.
 
 Restrict the `release` environment to the `main` branch and require approval before deployment. Never place signing material in the repository, workflow artifacts, release notes, or logs.
 
@@ -34,3 +34,5 @@ Before dispatching the `Release` workflow from `main`:
 4. Review `RELEASE_NOTES.md` and confirm the version with the maintainer.
 
 The workflow must finish signing, notarization, stapling, Gatekeeper assessment, checksum generation, and EdDSA appcast generation before it creates the GitHub release. A failure must leave no unsigned public artifact or partially published release. The published release must contain `BreakBar.zip`, `BreakBar.zip.sha256`, and `appcast.xml`; the app reads the appcast through GitHub's latest-release asset URL.
+
+BreakBar verifies an update's EdDSA signature before extracting its archive. If the EdDSA key must be rotated or recovered, publish the key-transition update as a Developer ID-signed DMG containing the new public key; Sparkle cannot transition keys through the normal ZIP channel while pre-extraction verification is enabled. Do not publish a ZIP signed only with the replacement key because installed versions will reject it.
