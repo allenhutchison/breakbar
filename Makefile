@@ -12,6 +12,11 @@ APP_BUNDLE = $(CURDIR)/.build/BreakBar.app
 APP_CONTENTS = $(APP_BUNDLE)/Contents
 APP_EXECUTABLE = $(APP_CONTENTS)/MacOS/BreakBar
 APP_EXECUTABLE_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATION)/BreakBar
+APP_FRAMEWORKS = $(APP_CONTENTS)/Frameworks
+APP_RESOURCES = $(APP_CONTENTS)/Resources
+SPARKLE_FRAMEWORK = $(APP_FRAMEWORKS)/Sparkle.framework
+SPARKLE_FRAMEWORK_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATION)/Sparkle.framework
+SPARKLE_LICENSE_SOURCE = $(CURDIR)/.build/artifacts/sparkle/Sparkle/LICENSE
 SIGNING_IDENTITY ?= -
 
 .PHONY: build bundle release-bundle test run demo
@@ -21,8 +26,10 @@ build:
 
 bundle: build
 	rm -rf $(APP_BUNDLE)
-	mkdir -p $(APP_CONTENTS)/MacOS
+	mkdir -p $(APP_CONTENTS)/MacOS $(APP_FRAMEWORKS) $(APP_RESOURCES)/ThirdPartyLicenses
 	cp $(APP_EXECUTABLE_SOURCE) $(APP_EXECUTABLE)
+	ditto $(SPARKLE_FRAMEWORK_SOURCE) $(SPARKLE_FRAMEWORK)
+	cp $(SPARKLE_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/Sparkle.txt
 	cp $(CURDIR)/Support/Info.plist $(APP_CONTENTS)/Info.plist
 	codesign --force --sign - --identifier app.breakbar.mac \
 		--entitlements $(CURDIR)/Support/BreakBar.entitlements $(APP_BUNDLE)
@@ -30,6 +37,22 @@ bundle: build
 release-bundle:
 	test "$(SIGNING_IDENTITY)" != "-"
 	$(MAKE) bundle CONFIGURATION=release
+	codesign --force --timestamp --options runtime \
+		--sign "$(SIGNING_IDENTITY)" \
+		$(SPARKLE_FRAMEWORK)/Versions/B/XPCServices/Installer.xpc
+	codesign --force --timestamp --options runtime \
+		--preserve-metadata=entitlements \
+		--sign "$(SIGNING_IDENTITY)" \
+		$(SPARKLE_FRAMEWORK)/Versions/B/XPCServices/Downloader.xpc
+	codesign --force --timestamp --options runtime \
+		--sign "$(SIGNING_IDENTITY)" \
+		$(SPARKLE_FRAMEWORK)/Versions/B/Autoupdate
+	codesign --force --timestamp --options runtime \
+		--sign "$(SIGNING_IDENTITY)" \
+		$(SPARKLE_FRAMEWORK)/Versions/B/Updater.app
+	codesign --force --timestamp --options runtime \
+		--sign "$(SIGNING_IDENTITY)" \
+		$(SPARKLE_FRAMEWORK)
 	codesign --force --timestamp --options runtime \
 		--generate-entitlement-der \
 		--sign "$(SIGNING_IDENTITY)" \

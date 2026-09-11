@@ -33,8 +33,13 @@ jobs:
           swift --version
           xcodebuild -version
 
-      - name: Build
-        run: make build
+      - name: Build app bundle
+        run: |
+          make bundle
+          codesign --verify --deep --strict --verbose=2 .build/BreakBar.app
+          otool -L .build/BreakBar.app/Contents/MacOS/BreakBar | grep -F '@rpath/Sparkle.framework/Versions/B/Sparkle'
+          test -d .build/BreakBar.app/Contents/Frameworks/Sparkle.framework
+          test -f .build/BreakBar.app/Contents/Resources/ThirdPartyLicenses/Sparkle.txt
 
       - name: Test
         run: make test

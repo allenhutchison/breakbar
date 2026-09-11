@@ -3,6 +3,7 @@ import SwiftUI
 
 struct BreakBarMenuView: View {
     @ObservedObject var model: AppModel
+    let checkForUpdates: () -> Void
 
     private var palette: BreakPalette {
         BreakPalette(tone: model.presentation.tone)
@@ -118,6 +119,12 @@ struct BreakBarMenuView: View {
                 }
                 .buttonStyle(.plain)
                 .help("Today’s history")
+                Button(action: checkForUpdates) {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.plain)
+                .help("Check for Updates…")
+                .accessibilityLabel("Check for Updates")
                 SettingsLink { Image(systemName: "gearshape") }
                     .buttonStyle(.plain)
                     .help("Settings")

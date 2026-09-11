@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var model: AppModel
+    let checkForUpdates: () -> Void
 
     var body: some View {
         Form {
@@ -87,6 +88,13 @@ struct SettingsView: View {
             Section("Accessories") {
                 Text("No accessories installed")
                 Text("BUSY Bar support will be added as an optional plugin after hardware validation.")
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Updates") {
+                Button("Check for Updates…", action: checkForUpdates)
+                Text("BreakBar checks for updates automatically and installs downloaded updates when the app is ready to relaunch.")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

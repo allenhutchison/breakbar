@@ -4,7 +4,7 @@ BreakBar is a Mac-first menu-bar countdown that makes regular breaks hard to ign
 
 ## Download
 
-Signed and notarized builds are published on the [BreakBar releases page](https://github.com/allenhutchison/breakbar/releases/latest). BreakBar currently supports Apple Silicon Macs running macOS 14 or later.
+Signed and notarized builds are published on the [BreakBar releases page](https://github.com/allenhutchison/breakbar/releases/latest). BreakBar checks that release channel automatically, verifies downloaded archives with a dedicated EdDSA signature before extraction, and installs updates when it is ready to relaunch. You can also check immediately from the circular-arrows button in the menu-bar popover or from Settings. BreakBar currently supports Apple Silicon Macs running macOS 14 or later.
 
 The project website is published at [allenhutchison.github.io/breakbar](https://allenhutchison.github.io/breakbar/).
 
@@ -45,7 +45,7 @@ make build
 
 ## Release
 
-Public builds are created by the `Release` GitHub Actions workflow. It builds the release configuration, signs it with a Developer ID Application certificate, enables the hardened runtime, submits it to Apple for notarization, staples the resulting ticket, and publishes `BreakBar.zip` with its SHA-256 checksum to GitHub Releases.
+Public builds are created by the `Release` GitHub Actions workflow. It builds the release configuration, embeds and signs Sparkle's updater helpers with the Developer ID Application certificate, enables the hardened runtime, submits the app to Apple for notarization, staples the resulting ticket, and publishes `BreakBar.zip`, its SHA-256 checksum, and an EdDSA-signed `appcast.xml` to GitHub Releases.
 
 The release workflow requires the repository secrets documented in [the release guidelines](.claude/guidelines/release.md). It intentionally does not publish an unsigned fallback.
 
@@ -56,7 +56,7 @@ The Makefile selects the installed Xcode beta because this machine’s currently
 - `BreakBarCore` contains the deterministic state machine, policy, presentation model, and accessory protocol. It has no UI or hardware dependency.
 - `BreakBarPersistence` owns the migration-capable SQLite session ledger and recoverable state snapshot. Timer transitions commit there before the UI publishes them.
 - `BreakBarExport` renders correction-aware daily history and safely replaces BreakBar’s marked Markdown section.
-- `BreakBarApp` is the always-available Mac presentation/input implementation.
+- `BreakBarApp` is the always-available Mac presentation/input implementation and integrates Sparkle for signed updates.
 - A future BUSY Bar target will conform to `BreakBarAccessory` after its shipping API has been validated.
 
 Normal and demo runs use separate databases under BreakBar’s Application Support directory, so accelerated cycles never enter real work history. Existing `state.json` state is imported once when the normal SQLite database is first created and retained as a recovery artifact.
