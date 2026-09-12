@@ -1,0 +1,26 @@
+version: 2
+
+updates:
+  - package-ecosystem: swift
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 2
+    labels:
+      - dependencies
+      - automated
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    labels:
+      - dependencies
+      - automated
+    groups:
+      pages-actions:
+        patterns:
+          - actions/configure-pages
+          - actions/upload-pages-artifact
+          - actions/deploy-pages
