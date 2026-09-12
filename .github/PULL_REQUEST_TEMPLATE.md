@@ -1,3 +1,8 @@
+> [!IMPORTANT]
+> External contributors should open a pull request only after the maintainer
+> explicitly approves the implementation in a linked issue. Unsolicited pull
+> requests will likely be closed without review.
+
 ## Summary
 
 <!-- What this PR does and why. Link the issue: Fixes #<number>. -->

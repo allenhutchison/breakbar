@@ -1,5 +1,8 @@
 # BreakBar
 
+[![CI](https://github.com/allenhutchison/breakbar/actions/workflows/ci.yml/badge.svg)](https://github.com/allenhutchison/breakbar/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 BreakBar is a Mac-first menu-bar countdown that makes regular breaks hard to ignore. It works without external hardware; optional accessories can mirror the current state and send the same typed commands as the Mac UI.
 
 ## Download
@@ -43,6 +46,16 @@ make test
 make build
 ```
 
+## Contributing
+
+Issues and feature discussions are welcome. BreakBar is maintainer-directed:
+do not open a pull request unless the maintainer has explicitly approved the
+implementation in a linked issue. Unsolicited pull requests will likely be
+closed without review; independent changes should be maintained in a fork.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full policy and development
+workflow. Report security and privacy vulnerabilities privately according to
+[SECURITY.md](SECURITY.md).
+
 ## Release
 
 Public builds are created by the `Release` GitHub Actions workflow. It builds the release configuration, embeds and signs Sparkle's updater helpers with the Developer ID Application certificate, enables the hardened runtime, submits the app to Apple for notarization, staples the resulting ticket, and publishes `BreakBar.zip`, its SHA-256 checksum, and an EdDSA-signed `appcast.xml` to GitHub Releases.
@@ -62,3 +75,8 @@ The Makefile selects the installed Xcode beta because this machine’s currently
 Normal and demo runs use separate databases under BreakBar’s Application Support directory, so accelerated cycles never enter real work history. Existing `state.json` state is imported once when the normal SQLite database is first created and retained as a recovery artifact.
 
 The broader product design is in [planning/BreakBar V1 Design.md](planning/BreakBar%20V1%20Design.md).
+
+## License
+
+BreakBar is available under the [MIT License](LICENSE). Third-party components
+retain their own licenses.
