@@ -54,3 +54,5 @@ body:
           required: true
         - label: This report does not contain a security vulnerability or sensitive personal data.
           required: true
+        - label: I understand this issue is not approval to open a pull request; I will wait for explicit maintainer signoff.
+          required: true

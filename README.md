@@ -48,9 +48,13 @@ make build
 
 ## Contributing
 
-Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the
-development workflow and project boundaries. Report security and privacy
-vulnerabilities privately according to [SECURITY.md](SECURITY.md).
+Issues and feature discussions are welcome. BreakBar is maintainer-directed:
+do not open a pull request unless the maintainer has explicitly approved the
+implementation in a linked issue. Unsolicited pull requests will likely be
+closed without review; independent changes should be maintained in a fork.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the full policy and development
+workflow. Report security and privacy vulnerabilities privately according to
+[SECURITY.md](SECURITY.md).
 
 ## Release
 

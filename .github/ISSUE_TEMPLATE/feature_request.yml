@@ -4,6 +4,10 @@ title: "[Feature]: "
 labels:
   - enhancement
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Issues are welcome for discussion. Filing an issue is not approval to open a pull request; wait for explicit maintainer signoff before implementing a change for this repository.
   - type: textarea
     id: problem
     attributes:
@@ -31,4 +35,6 @@ body:
         - label: The Mac remains fully usable without external hardware.
           required: true
         - label: The proposal does not require collecting unnecessary personal data.
+          required: true
+        - label: I understand this issue is not approval to open a pull request; I will wait for explicit maintainer signoff.
           required: true

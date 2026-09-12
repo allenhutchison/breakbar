@@ -1,21 +1,30 @@
 # Contributing to BreakBar
 
-Thanks for helping improve BreakBar. Bug reports, focused feature proposals,
-documentation improvements, and code contributions are welcome.
+BreakBar is a maintainer-directed project. Bug reports and focused feature
+proposals are welcome, but pull requests are considered only after the maintainer
+has explicitly signed off on the proposed implementation in a linked issue.
 
-## Before opening a change
+## Proposing a change
 
 - Search the existing issues and pull requests first.
-- Open an issue before investing in a substantial feature or architectural
-  change so its product fit and scope can be discussed.
+- Open an issue describing the problem and the user-visible outcome before
+  investing in an implementation intended for this repository.
+- Discuss the proposal in that issue and wait for explicit maintainer signoff
+  before opening a pull request. An issue by itself is not approval to proceed.
+- Pull requests without that signoff will likely be closed without review.
 - Report security or privacy vulnerabilities privately as described in
   [SECURITY.md](SECURITY.md), not in a public issue.
 
+If you want to make a change independently, fork the repository and maintain
+the change there. If you believe it would help other BreakBar users, file an
+issue so the idea can be discussed before any upstream implementation begins.
+
 ## Development setup
 
-BreakBar requires macOS 14 or later, Swift 6, and a compatible Xcode toolchain.
-The Makefile currently defaults to `/Applications/Xcode-beta.app`; override
-`DEVELOPER_DIR` if your compatible Xcode is installed elsewhere.
+For approved upstream work or development in a fork, BreakBar requires macOS 14
+or later, Swift 6, and a compatible Xcode toolchain. The Makefile currently
+defaults to `/Applications/Xcode-beta.app`; override `DEVELOPER_DIR` if your
+compatible Xcode is installed elsewhere.
 
 Build and test with the repository targets:
 
@@ -52,9 +61,11 @@ testing, privacy, UI, and release contracts.
 
 ## Pull requests
 
-Keep pull requests narrow and explain both the user-facing outcome and the
-reason for the change. Add deterministic tests for behavior changes and update
-documentation when behavior changes.
+Open a pull request only after receiving explicit maintainer signoff in a
+linked issue, and keep the implementation within the agreed scope. Keep pull
+requests narrow and explain both the user-facing outcome and the reason for the
+change. Add deterministic tests for behavior changes and update documentation
+when behavior changes.
 
 Before submitting:
 
