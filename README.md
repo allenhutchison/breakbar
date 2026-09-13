@@ -1,5 +1,9 @@
 # BreakBar
 
+<p align="center">
+  <img src="docs/app-icon.png" width="128" height="128" alt="BreakBar app icon">
+</p>
+
 [![CI](https://github.com/allenhutchison/breakbar/actions/workflows/ci.yml/badge.svg)](https://github.com/allenhutchison/breakbar/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 

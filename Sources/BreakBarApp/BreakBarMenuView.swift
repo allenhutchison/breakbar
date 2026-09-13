@@ -237,34 +237,88 @@ private struct TimerInstrument: View {
 
     var body: some View {
         ZStack {
-            Circle()
-                .stroke(palette.track, lineWidth: 8)
-            Circle()
-                .trim(from: 0, to: max(0.012, progress))
-                .stroke(
-                    palette.accent,
-                    style: StrokeStyle(lineWidth: 8, lineCap: .round)
-                )
-                .rotationEffect(.degrees(-90))
-            if let timer {
-                StableTimerText(
-                    text: timer.text,
-                    fontSize: 17,
-                    weight: .bold,
-                    width: 68,
-                    alignment: .center
-                )
+            if timer == nil, label == "BreakBar" {
+                IdleBrandMark()
             } else {
-                Text(label)
-                    .font(.system(size: label.count > 7 ? 13 : 17, weight: .bold, design: .monospaced))
-                    .minimumScaleFactor(0.65)
-                    .lineLimit(1)
-                    .frame(width: 68, alignment: .center)
+                Circle()
+                    .stroke(palette.track, lineWidth: 8)
+                Circle()
+                    .trim(from: 0, to: max(0.012, progress))
+                    .stroke(
+                        palette.accent,
+                        style: StrokeStyle(lineWidth: 8, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                if let timer {
+                    StableTimerText(
+                        text: timer.text,
+                        fontSize: 17,
+                        weight: .bold,
+                        width: 68,
+                        alignment: .center
+                    )
+                } else {
+                    Text(label)
+                        .font(.system(size: label.count > 7 ? 13 : 17, weight: .bold, design: .monospaced))
+                        .minimumScaleFactor(0.65)
+                        .lineLimit(1)
+                        .frame(width: 68, alignment: .center)
+                }
             }
         }
         .frame(width: 92, height: 92)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(label)
+    }
+}
+
+private struct IdleBrandMark: View {
+    private let brandOrange = Color(red: 1, green: 0.54, blue: 0.16)
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.12, green: 0.16, blue: 0.22),
+                            Color(red: 0.05, green: 0.07, blue: 0.10),
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .stroke(.white.opacity(0.10), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.20), radius: 5, y: 3)
+
+            Circle()
+                .trim(from: 0.06, to: 0.94)
+                .stroke(
+                    brandOrange,
+                    style: StrokeStyle(lineWidth: 7, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-30))
+                .padding(12)
+
+            Capsule()
+                .fill(.white)
+                .frame(width: 4, height: 25)
+                .offset(y: -10)
+
+            Capsule()
+                .fill(.white)
+                .frame(width: 4, height: 22)
+                .offset(y: -8)
+                .rotationEffect(.degrees(125))
+
+            Circle()
+                .fill(.white)
+                .frame(width: 8, height: 8)
+        }
+        .padding(2)
     }
 }
 

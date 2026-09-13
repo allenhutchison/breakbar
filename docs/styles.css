@@ -8,6 +8,7 @@
   --line: rgba(255, 255, 255, 0.12);
   --orange: #ff8a2a;
   --orange-dark: #d95d00;
+  --amber: #ffc25c;
   --blue: #78aefc;
   --max-width: 1120px;
 }
@@ -23,7 +24,8 @@ html {
 body {
   margin: 0;
   background:
-    radial-gradient(circle at 84% 8%, rgba(120, 174, 252, 0.12), transparent 28rem),
+    radial-gradient(circle at 83% 11%, rgba(255, 138, 42, 0.11), transparent 25rem),
+    radial-gradient(circle at 96% 35%, rgba(120, 174, 252, 0.08), transparent 32rem),
     var(--bg);
   color: var(--text);
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
@@ -53,7 +55,7 @@ footer {
 .wordmark {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   color: var(--text);
   font-size: 1.05rem;
   font-weight: 700;
@@ -62,14 +64,9 @@ footer {
 }
 
 .wordmark-mark {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  background: var(--surface);
-  font-size: 1.15rem;
+  display: block;
+  width: 36px;
+  height: 36px;
 }
 
 .header-link {
@@ -85,20 +82,30 @@ footer {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
-  gap: clamp(48px, 8vw, 96px);
+  grid-template-columns: minmax(0, 0.94fr) minmax(390px, 1.06fr);
+  gap: clamp(48px, 7vw, 88px);
   align-items: center;
-  min-height: 690px;
-  padding-block: 80px;
+  min-height: 720px;
+  padding-block: 88px;
 }
 
-.eyebrow {
-  margin: 0 0 16px;
-  color: var(--orange);
-  font-size: 0.78rem;
-  font-weight: 750;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 22px;
+  color: #c2cad5;
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.kicker span {
+  width: 22px;
+  height: 22px;
+  border: 5px solid var(--orange);
+  border-right-color: transparent;
+  border-radius: 50%;
+  transform: rotate(-26deg);
 }
 
 h1,
@@ -111,10 +118,11 @@ p {
 h1 {
   max-width: 720px;
   margin-bottom: 28px;
-  font-size: clamp(3.5rem, 7vw, 6.5rem);
-  font-weight: 760;
-  letter-spacing: -0.065em;
-  line-height: 0.93;
+  font-family: "Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: clamp(3.7rem, 5.5vw, 6.15rem);
+  font-weight: 750;
+  letter-spacing: -0.07em;
+  line-height: 0.91;
 }
 
 .hero-summary {
@@ -157,8 +165,9 @@ h1 {
 }
 
 .button-primary {
-  background: var(--orange);
+  background: linear-gradient(135deg, var(--amber), var(--orange) 52%, #f17517);
   color: #1b0e04;
+  box-shadow: 0 10px 28px rgba(255, 138, 42, 0.18);
 }
 
 .button-primary:hover {
@@ -183,20 +192,72 @@ h1 {
 
 .timer-stage {
   position: relative;
-  min-height: 420px;
+  min-height: 470px;
   border: 1px solid var(--line);
-  border-radius: 28px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.015));
-  box-shadow: 0 32px 90px rgba(0, 0, 0, 0.34);
+  border-radius: 34px;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255, 138, 42, 0.1), transparent 15rem),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.052), rgba(255, 255, 255, 0.012));
+  box-shadow: 0 38px 100px rgba(0, 0, 0, 0.38);
   overflow: hidden;
 }
 
 .timer-stage::before {
   position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(90deg, transparent 0 47px, rgba(255, 255, 255, 0.018) 48px);
+  width: 420px;
+  height: 420px;
+  right: -196px;
+  bottom: -164px;
+  border: 48px solid rgba(255, 138, 42, 0.105);
+  border-right-color: transparent;
+  border-radius: 50%;
   content: "";
   pointer-events: none;
+  transform: rotate(28deg);
+}
+
+.timer-stage::after {
+  position: absolute;
+  width: 170px;
+  height: 170px;
+  top: -92px;
+  right: -62px;
+  border-radius: 50%;
+  background: rgba(255, 138, 42, 0.13);
+  filter: blur(48px);
+  content: "";
+  pointer-events: none;
+}
+
+.brand-lockup {
+  position: absolute;
+  top: 34px;
+  left: 36px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.brand-lockup img {
+  width: 96px;
+  height: 96px;
+  filter: drop-shadow(0 18px 25px rgba(0, 0, 0, 0.32));
+}
+
+.brand-lockup div {
+  display: grid;
+  gap: 2px;
+}
+
+.brand-lockup strong {
+  font-family: "Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: -0.025em;
+}
+
+.brand-lockup span {
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .menu-preview {
@@ -205,7 +266,7 @@ h1 {
   width: fit-content;
   align-items: center;
   gap: 5px;
-  margin: 54px auto 34px;
+  margin: 54px 34px 0 auto;
   border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 8px;
   background: #252d38;
@@ -232,7 +293,7 @@ h1 {
   position: relative;
   display: grid;
   width: min(calc(100% - 56px), 340px);
-  margin-inline: auto;
+  margin: 52px 34px 0 auto;
   border: 1px solid var(--line);
   border-radius: 20px;
   background: rgba(19, 25, 35, 0.92);
@@ -290,10 +351,19 @@ h1 {
   margin-bottom: 56px;
 }
 
+.section-note {
+  max-width: 16rem;
+  margin: 8px 0 0;
+  color: var(--orange);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
 h2 {
   max-width: 780px;
   margin-bottom: 0;
   font-size: clamp(2.2rem, 5vw, 4.1rem);
+  font-family: "Avenir Next", Avenir, -apple-system, BlinkMacSystemFont, sans-serif;
   font-weight: 720;
   letter-spacing: -0.055em;
   line-height: 1.04;
@@ -302,25 +372,27 @@ h2 {
 .feature-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
+  gap: 38px;
 }
 
 .feature-grid article {
-  min-height: 260px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  background: var(--surface);
-  padding: 24px;
+  min-height: 238px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 28px 6px 0;
 }
 
-.feature-number {
-  color: #6f7a88;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.76rem;
+.feature-mark {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border: 6px solid rgba(255, 138, 42, 0.92);
+  border-right-color: transparent;
+  border-radius: 50%;
+  transform: rotate(-26deg);
 }
 
 h3 {
-  margin: 62px 0 12px;
+  margin: 46px 0 12px;
   font-size: 1.25rem;
   letter-spacing: -0.025em;
 }
@@ -373,7 +445,7 @@ footer {
   }
 
   .timer-stage {
-    min-height: 400px;
+    min-height: 450px;
   }
 
   .section-heading,
@@ -418,15 +490,30 @@ footer {
   }
 
   .timer-stage {
-    min-height: 360px;
+    min-height: 390px;
+  }
+
+  .brand-lockup {
+    top: 22px;
+    left: 22px;
+  }
+
+  .brand-lockup img {
+    width: 72px;
+    height: 72px;
+  }
+
+  .brand-lockup div {
+    display: none;
   }
 
   .menu-preview {
-    margin-top: 40px;
+    margin: 32px 22px 0 auto;
   }
 
   .state-card {
     width: calc(100% - 36px);
+    margin: 72px auto 0;
   }
 
   .state-strip {
