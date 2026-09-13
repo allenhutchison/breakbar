@@ -14,6 +14,8 @@ APP_EXECUTABLE = $(APP_CONTENTS)/MacOS/BreakBar
 APP_EXECUTABLE_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATION)/BreakBar
 APP_FRAMEWORKS = $(APP_CONTENTS)/Frameworks
 APP_RESOURCES = $(APP_CONTENTS)/Resources
+APP_ICON_SOURCE = $(CURDIR)/Support/AppIcon.png
+APP_ICON = $(CURDIR)/.build/AppIcon.icns
 SPARKLE_FRAMEWORK = $(APP_FRAMEWORKS)/Sparkle.framework
 SPARKLE_FRAMEWORK_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATION)/Sparkle.framework
 SPARKLE_LICENSE_SOURCE = $(CURDIR)/.build/artifacts/sparkle/Sparkle/LICENSE
@@ -24,12 +26,16 @@ SIGNING_IDENTITY ?= -
 build:
 	$(SWIFT_ENV) swift build $(SWIFT_PATHS) --configuration $(CONFIGURATION)
 
-bundle: build
+$(APP_ICON): $(APP_ICON_SOURCE) $(CURDIR)/scripts/generate-app-icon.sh
+	$(CURDIR)/scripts/generate-app-icon.sh $(APP_ICON_SOURCE) $(APP_ICON)
+
+bundle: build $(APP_ICON)
 	rm -rf $(APP_BUNDLE)
 	mkdir -p $(APP_CONTENTS)/MacOS $(APP_FRAMEWORKS) $(APP_RESOURCES)/ThirdPartyLicenses
 	cp $(APP_EXECUTABLE_SOURCE) $(APP_EXECUTABLE)
 	ditto $(SPARKLE_FRAMEWORK_SOURCE) $(SPARKLE_FRAMEWORK)
 	cp $(SPARKLE_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/Sparkle.txt
+	cp $(APP_ICON) $(APP_RESOURCES)/AppIcon.icns
 	cp $(CURDIR)/Support/Info.plist $(APP_CONTENTS)/Info.plist
 	codesign --force --sign - --identifier app.breakbar.mac \
 		--entitlements $(CURDIR)/Support/BreakBar.entitlements $(APP_BUNDLE)
