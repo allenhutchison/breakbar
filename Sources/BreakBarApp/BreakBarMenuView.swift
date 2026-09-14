@@ -4,6 +4,7 @@ import SwiftUI
 struct BreakBarMenuView: View {
     @ObservedObject var model: AppModel
     let checkForUpdates: () -> Void
+    let showSettings: () -> Void
 
     private var palette: BreakPalette {
         BreakPalette(tone: model.presentation.tone)
@@ -125,9 +126,12 @@ struct BreakBarMenuView: View {
                 .buttonStyle(.plain)
                 .help("Check for Updates…")
                 .accessibilityLabel("Check for Updates")
-                SettingsLink { Image(systemName: "gearshape") }
+                Button(action: showSettings) {
+                    Image(systemName: "gearshape")
+                }
                     .buttonStyle(.plain)
                     .help("Settings")
+                    .accessibilityLabel("Settings")
                 Button(action: model.quit) {
                     Image(systemName: "power")
                 }

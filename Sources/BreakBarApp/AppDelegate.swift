@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private let travelWarningStatusItemWidth: CGFloat = 104
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
+    private let settingsWindowController = SettingsWindowController()
     private var modelObservation: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -59,6 +60,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         updaterController.checkForUpdates(nil)
     }
 
+    func showSettings() {
+        settingsWindowController.show(
+            model: model,
+            checkForUpdates: checkForUpdates
+        )
+    }
+
     private func configureStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: compactStatusItemWidth)
         guard let button = item.button else { return }
@@ -74,7 +82,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private func configurePopover() {
         let content = BreakBarMenuView(
             model: model,
-            checkForUpdates: checkForUpdates
+            checkForUpdates: checkForUpdates,
+            showSettings: showSettings
         )
             .fixedSize(horizontal: false, vertical: true)
         let hostingController = NSHostingController(rootView: content)

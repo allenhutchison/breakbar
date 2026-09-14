@@ -1,20 +1,14 @@
 import AppKit
-import SwiftUI
 
 @main
-struct BreakBarApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    init() {
-        NSApplication.shared.setActivationPolicy(.accessory)
-    }
-
-    var body: some Scene {
-        Settings {
-            SettingsView(
-                model: appDelegate.model,
-                checkForUpdates: appDelegate.checkForUpdates
-            )
-        }
+enum BreakBarApp {
+    @MainActor
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.setActivationPolicy(.accessory)
+        application.delegate = delegate
+        application.run()
+        withExtendedLifetime(delegate) {}
     }
 }
