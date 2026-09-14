@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .executable(name: "BreakBar", targets: ["BreakBarApp"]),
         .library(name: "BreakBarCore", targets: ["BreakBarCore"]),
+        .library(name: "BreakBarBusyBar", targets: ["BreakBarBusyBar"]),
         .library(name: "BreakBarPersistence", targets: ["BreakBarPersistence"]),
         .library(name: "BreakBarExport", targets: ["BreakBarExport"]),
     ],
@@ -20,6 +21,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "CSQLite"),
         .target(name: "BreakBarCore"),
+        .target(name: "BreakBarBusyBar"),
         .target(
             name: "BreakBarPersistence",
             dependencies: ["BreakBarCore", "CSQLite"]
@@ -46,6 +48,10 @@ let package = Package(
         .testTarget(
             name: "BreakBarCoreTests",
             dependencies: ["BreakBarCore"]
+        ),
+        .testTarget(
+            name: "BreakBarBusyBarTests",
+            dependencies: ["BreakBarBusyBar"]
         ),
         .testTarget(
             name: "BreakBarPersistenceTests",
