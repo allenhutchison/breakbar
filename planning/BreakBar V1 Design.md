@@ -68,7 +68,7 @@ BreakBar is therefore not a conventional Pomodoro app. Its purpose is to enforce
 - **No surprise interruption during an active call.** A call may defer enforcement; when it ends, the normal five-minute warning is preserved.
 - **The Bar communicates to the household.** Text carries the meaning; color is only reinforcement.
 - **The Mac owns policy and history.** Device firmware state is never the only copy of a timer or work log.
-- **Fail safe for the person, not for timer purity.** There is always an accessible emergency escape from an overlay, and accessory failure never traps the user.
+- **Fail safe for the person, not for timer purity.** Every overlay has accessible deferral or clock-out controls, and accessory failure never traps the user.
 - **Local-first and inspectable.** No cloud service is needed for core behavior or time history.
 
 ---
@@ -116,7 +116,7 @@ BreakBar is therefore not a conventional Pomodoro app. Its purpose is to enforce
 | Meeting join tolerance | 5 minutes before/after boundary | Window for associating call activity with a calendar event |
 | Travel adjacency | 15 minutes | Default maximum gap for linking travel and an offsite meeting |
 
-The 55-minute target is a preference. The 75-minute ceiling is enforced whenever the user is not in a detected live call. A live call, travel deadline, emergency escape, or system failure may violate it; BreakBar records the reason rather than disrupting an unsafe or socially inappropriate moment.
+The 55-minute target is a preference. The 75-minute ceiling is enforced whenever the user is not in a detected live call. A live call, travel deadline, explicit five-minute deferral, or system failure may violate it; BreakBar records the reason rather than disrupting an unsafe or socially inappropriate moment.
 
 ---
 
@@ -186,7 +186,7 @@ At the planned break time, BreakBar displays a full-screen overlay on the active
 
 The overlay is visually dominant, avoids destructive app manipulation, and does not close or alter the user’s work. It blocks ordinary clicks from dismissing it. The menu bar and connected display accessories show `BREAK`.
 
-The overlay always provides a visible safety escape, described in Section 16. It must never imitate a macOS login screen or hide how to regain control.
+The overlay always provides visible five-minute deferral and clock-out controls, described in Section 16. It must never imitate a macOS login screen or hide how to regain control.
 
 ### 5.6 Active break: the start/return contract
 
@@ -418,7 +418,7 @@ Travel is a higher-priority physical departure and satisfies the movement intent
 
 When simultaneous evidence conflicts, apply this order:
 
-1. **Clock out / emergency escape** — user control and safety.
+1. **Clock out / explicit deferral** — user control and safety.
 2. **Travel required** — fixed departure deadline.
 3. **Confirmed away location** — do not enforce a home-office break remotely.
 4. **Lunch** — explicit non-working interval.
@@ -609,7 +609,7 @@ The overlay:
 - ignores ordinary Escape/click dismissal;
 - exposes accessibility labels and sufficient contrast;
 - displays device-offline fallback instructions when necessary;
-- supports a deliberate keyboard safety escape;
+- provides a visible five-minute deferral button;
 - is recreated after display, space, wake, or resolution changes.
 
 macOS prevents third-party apps from creating a truly unbreakable kiosk without elevated management. V1 should be strongly interruptive, not hostile or deceptive.
@@ -859,11 +859,11 @@ Daily bucketing follows the user’s local time zone. Intervals crossing midnigh
 The full-screen overlay includes:
 
 - `BUSY Bar offline? Start break here` when the device cannot be reached;
-- a visible “Hold ⌘⌥Esc for 3 seconds” emergency escape;
+- a visible `5 more minutes` button that records the deferral and returns to warning mode;
 - an accessible menu command from the app’s status item;
 - `Clock Out` after confirmation.
 
-Emergency dismissal records the reason. For a normal break, it can either start the break locally or cancel enforcement after an explicit confirmation. It never silently marks a five-minute break as completed.
+Deferral records the reason and moves the deadline five minutes later without restarting the focus interval. It never marks a five-minute break as completed. Clocking out remains available after explicit confirmation.
 
 Travel overlays always include a Mac acknowledgement because departure must not depend on an accessory left across the room. If BreakBar itself becomes unresponsive, standard macOS Force Quit remains available.
 
@@ -950,7 +950,7 @@ Generate random event streams and assert:
 
 - VoiceOver labels and keyboard navigation.
 - Overlay across spaces, full-screen apps, sleep/wake, resolution changes, and display hot-plug.
-- Visible emergency escape at all supported sizes.
+- Visible five-minute deferral and clock-out controls at all supported sizes.
 - Menu-bar legibility and countdown updates.
 - Color-blind-safe meaning: every state is understandable from text alone.
 

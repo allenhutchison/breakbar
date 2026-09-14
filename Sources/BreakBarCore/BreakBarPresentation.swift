@@ -153,9 +153,13 @@ public struct BreakBarPresentation: Equatable, Sendable {
             if state.enforcement == .required {
                 detail = "Start the break on this Mac or with a connected accessory."
             } else if state.enforcement == .warning {
-                detail = state.breakPlanReason == .postMeetingWarning
-                    ? "Your meeting ended. Break begins in \(Self.spoken(remaining))."
-                    : "Your break begins in \(Self.spoken(remaining))."
+                if state.breakPlanReason == .postMeetingWarning {
+                    detail = "Your meeting ended. Break begins in \(Self.spoken(remaining))."
+                } else if state.breakPlanReason == .userDeferred {
+                    detail = "Break delayed. Break begins in \(Self.spoken(remaining))."
+                } else {
+                    detail = "Your break begins in \(Self.spoken(remaining))."
+                }
             } else {
                 switch state.breakPlanReason {
                 case .pulledBeforeMeeting:
@@ -164,6 +168,8 @@ public struct BreakBarPresentation: Equatable, Sendable {
                     detail = "Break follows your meeting with a fresh warning."
                 case .postMeetingWarning:
                     detail = "Your meeting ended. Break begins in \(Self.spoken(remaining))."
+                case .userDeferred:
+                    detail = "Break delayed. Break begins in \(Self.spoken(remaining))."
                 case .nominal, nil:
                     detail = "Next break in \(Self.spoken(remaining))."
                 }
