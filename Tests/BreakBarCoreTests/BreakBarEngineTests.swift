@@ -22,6 +22,59 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.enforcement, .required)
     }
 
+    func testRequiredBreakCanBeDeferredWithoutRestartingFocus() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        let focusStartedAt = engine.state.phaseStartedAt
+        let nominalDueAt = engine.state.nominalFocusDueAt
+
+        XCTAssertEqual(
+            engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.state.phaseStartedAt, focusStartedAt)
+        XCTAssertEqual(engine.state.nominalFocusDueAt, nominalDueAt)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(360))
+        XCTAssertEqual(engine.state.breakPlanReason, .userDeferred)
+        XCTAssertEqual(engine.state.lastTransitionReason, .breakDeferred)
+
+        let revision = engine.state.revision
+        XCTAssertEqual(
+            engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60)),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.revision, revision)
+    }
+
+    func testBreakDeferralRequiresARequiredBreakAndPositiveDuration() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+
+        XCTAssertEqual(engine.handle(.deferBreak(by: 300), at: origin), .unchanged)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        XCTAssertEqual(
+            engine.handle(.deferBreak(by: 0), at: origin.addingTimeInterval(60)),
+            .unchanged
+        )
+    }
+
+    func testCalendarRefreshPreservesActiveBreakDeferral() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        _ = engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60))
+
+        XCTAssertEqual(
+            engine.handle(.updateCalendarConstraints([]), at: origin.addingTimeInterval(61)),
+            .unchanged
+        )
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(360))
+        XCTAssertEqual(engine.state.enforcement, .warning)
+    }
+
     func testCorrectingInitialClockInRecalculatesFocusDeadline() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)

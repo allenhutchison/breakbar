@@ -9,6 +9,25 @@ final class BreakBarPresentationTests: XCTestCase {
         minimumBreakDuration: 20
     )
 
+    func testDeferredBreakWarningExplainsTheDelay() {
+        let presentation = BreakBarPresentation(
+            state: BreakBarState(
+                phase: .focusing,
+                enforcement: .warning,
+                phaseStartedAt: origin,
+                nominalFocusDueAt: origin.addingTimeInterval(60),
+                focusDueAt: origin.addingTimeInterval(360),
+                breakPlanReason: .userDeferred,
+                lastTransitionReason: .breakDeferred
+            ),
+            policy: policy,
+            now: origin.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(presentation.title, "Find a stopping point")
+        XCTAssertEqual(presentation.detail, "Break delayed. Break begins in 5 minutes.")
+    }
+
     func testWarningUsesMacCountdownDeadline() {
         let state = BreakBarState(
             phase: .focusing,

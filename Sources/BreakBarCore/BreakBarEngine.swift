@@ -39,6 +39,19 @@ public struct BreakBarEngine: Sendable {
             )
             return .changed
 
+        case let .deferBreak(duration):
+            guard state.phase == .focusing,
+                  state.enforcement == .required,
+                  duration.isFinite,
+                  duration > 0
+            else { return .unchanged }
+            state.enforcement = .warning
+            state.focusDueAt = now.addingTimeInterval(duration)
+            state.breakPlanReason = .userDeferred
+            state.lastTransitionReason = .breakDeferred
+            state.revision &+= 1
+            return .changed
+
         case .returnToFocus:
             guard state.phase == .onBreak else { return .unchanged }
             let remaining = max(0, (state.minimumBreakEndsAt ?? now).timeIntervalSince(now))
@@ -417,13 +430,15 @@ public struct BreakBarEngine: Sendable {
             }
         }
 
+        let preservesCurrentDeadline = state.breakPlanReason == .postMeetingWarning
+            || state.breakPlanReason == .userDeferred
         if !calendarMeetingIsActive,
-           state.breakPlanReason == .postMeetingWarning,
+           preservesCurrentDeadline,
            let currentDueAt = state.focusDueAt,
            now < currentDueAt
         {
             plannedBreakAt = currentDueAt
-            planReason = .postMeetingWarning
+            planReason = state.breakPlanReason ?? planReason
         } else if !calendarMeetingIsActive,
                   state.enforcement != .none,
                   let currentDueAt = state.focusDueAt,
