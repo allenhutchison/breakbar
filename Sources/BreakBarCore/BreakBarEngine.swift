@@ -240,16 +240,7 @@ public struct BreakBarEngine: Sendable {
     private mutating func endManualMeeting(at now: Date) {
         state.manualMeetingStartedAt = nil
         state.enforcement = .none
-        let nominalDueAt = state.nominalFocusDueAt
-            ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
-            ?? now
-        if now >= nominalDueAt {
-            state.focusDueAt = now.addingTimeInterval(policy.warningDuration)
-            state.breakPlanReason = .postMeetingWarning
-        } else {
-            state.focusDueAt = nominalDueAt
-            state.breakPlanReason = .nominal
-        }
+        restoreBreakPlanAfterMeeting(at: now)
         state.lastTransitionReason = .endManualMeeting
         state.revision &+= 1
     }
@@ -430,10 +421,9 @@ public struct BreakBarEngine: Sendable {
             }
         }
 
-        let preservesCurrentDeadline = state.breakPlanReason == .postMeetingWarning
-            || state.breakPlanReason == .userDeferred
-        if !calendarMeetingIsActive,
-           preservesCurrentDeadline,
+        let preservesCurrentDeadline = state.breakPlanReason == .userDeferred
+            || (!calendarMeetingIsActive && state.breakPlanReason == .postMeetingWarning)
+        if preservesCurrentDeadline,
            let currentDueAt = state.focusDueAt,
            now < currentDueAt
         {
@@ -480,20 +470,11 @@ public struct BreakBarEngine: Sendable {
             return nil
         }
 
-        let nominalDueAt = state.nominalFocusDueAt
-            ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
-            ?? now
         state.calendarMeetingStartsAt = nil
         state.calendarMeetingEndsAt = nil
         state.scheduledMeetingStartedAt = nil
         state.enforcement = .none
-        if now >= nominalDueAt {
-            state.focusDueAt = now.addingTimeInterval(policy.warningDuration)
-            state.breakPlanReason = .postMeetingWarning
-        } else {
-            state.focusDueAt = nominalDueAt
-            state.breakPlanReason = .nominal
-        }
+        restoreBreakPlanAfterMeeting(at: now)
         state.lastTransitionReason = .scheduledMeetingEnded
         state.revision &+= 1
         return .changed
@@ -535,6 +516,21 @@ public struct BreakBarEngine: Sendable {
             state.calendarMeetingEndsAt = nil
             state.scheduledMeetingStartedAt = nil
         }
+        restoreBreakPlanAfterMeeting(at: now)
+        state.lastTransitionReason = .liveCallEnded
+        state.revision &+= 1
+        return .changed
+    }
+
+    private mutating func restoreBreakPlanAfterMeeting(at now: Date) {
+        if state.breakPlanReason == .userDeferred,
+           let deferredDueAt = state.focusDueAt,
+           now < deferredDueAt
+        {
+            state.enforcement = .warning
+            return
+        }
+
         let nominalDueAt = state.nominalFocusDueAt
             ?? state.phaseStartedAt?.addingTimeInterval(policy.focusDuration)
             ?? now
@@ -545,9 +541,6 @@ public struct BreakBarEngine: Sendable {
             state.focusDueAt = nominalDueAt
             state.breakPlanReason = .nominal
         }
-        state.lastTransitionReason = .liveCallEnded
-        state.revision &+= 1
-        return .changed
     }
 
     private func meetingIsActive(at now: Date) -> Bool {

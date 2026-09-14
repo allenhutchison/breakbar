@@ -356,6 +356,43 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.enforcement, .required)
     }
 
+    func testScheduledMeetingEndPreservesFutureBreakDeferral() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        _ = engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60))
+        let deferredDueAt = origin.addingTimeInterval(360)
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(100),
+            endAt: origin.addingTimeInterval(200)
+        )
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([meeting]),
+                at: origin.addingTimeInterval(100)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.focusDueAt, deferredDueAt)
+        XCTAssertEqual(engine.state.breakPlanReason, .userDeferred)
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(200)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.focusDueAt, deferredDueAt)
+        XCTAssertEqual(engine.state.breakPlanReason, .userDeferred)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(201)), .unchanged)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(359)), .unchanged)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.handle(.tick, at: deferredDueAt), .changed)
+        XCTAssertEqual(engine.state.enforcement, .required)
+    }
+
     func testLiveCallSuppressesAlreadyRequiredBreak() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)
@@ -420,6 +457,32 @@ final class BreakBarEngineTests: XCTestCase {
             engine.handle(.tick, at: callEndedAt.addingTimeInterval(15)),
             .changed
         )
+        XCTAssertEqual(engine.state.enforcement, .required)
+    }
+
+    func testLiveCallEndPreservesFutureBreakDeferral() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        _ = engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60))
+        let deferredDueAt = origin.addingTimeInterval(360)
+        let signal = BreakCallSignal(
+            bundleIdentifier: "us.zoom.xos",
+            confidence: .dedicatedApplication
+        )
+        _ = engine.handle(.updateCallActivity(signal), at: origin.addingTimeInterval(100))
+
+        XCTAssertEqual(
+            engine.handle(.updateCallActivity(nil), at: origin.addingTimeInterval(200)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.focusDueAt, deferredDueAt)
+        XCTAssertEqual(engine.state.breakPlanReason, .userDeferred)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(200)), .unchanged)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(359)), .unchanged)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.handle(.tick, at: deferredDueAt), .changed)
         XCTAssertEqual(engine.state.enforcement, .required)
     }
 
@@ -533,6 +596,28 @@ final class BreakBarEngineTests: XCTestCase {
 
         XCTAssertEqual(engine.handle(.tick, at: meetingEndedAt), .changed)
         XCTAssertEqual(engine.state.enforcement, .warning)
+    }
+
+    func testManualMeetingEndPreservesFutureBreakDeferral() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        _ = engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60))
+        let deferredDueAt = origin.addingTimeInterval(360)
+        _ = engine.handle(.startManualMeeting, at: origin.addingTimeInterval(100))
+
+        XCTAssertEqual(
+            engine.handle(.endManualMeeting, at: origin.addingTimeInterval(200)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.focusDueAt, deferredDueAt)
+        XCTAssertEqual(engine.state.breakPlanReason, .userDeferred)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(200)), .unchanged)
+        XCTAssertEqual(engine.handle(.tick, at: origin.addingTimeInterval(359)), .unchanged)
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        XCTAssertEqual(engine.handle(.tick, at: deferredDueAt), .changed)
+        XCTAssertEqual(engine.state.enforcement, .required)
     }
 
     func testManualMeetingEndingBeforeDeadlineResumesOriginalFocusCycle() {
