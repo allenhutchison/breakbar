@@ -71,7 +71,7 @@ The Makefile selects the installed Xcode beta because this machine’s currently
 ## Architecture
 
 - `BreakBarCore` contains the deterministic state machine, policy, presentation model, and accessory protocol. It has no UI or hardware dependency.
-- `BreakBarBusyBar` contains the optional BUSY Bar HTTP transport and namespaced, self-clearing display operations. App wiring and physical input support remain gated on hardware validation.
+- `BreakBarBusyBar` contains the optional BUSY Bar HTTP transport, namespaced self-clearing display operations, API compatibility checks, and official-protobuf input decoding. App wiring remains separate so the Mac-only path stays complete.
 - `BreakBarPersistence` owns the migration-capable SQLite session ledger and recoverable state snapshot. Timer transitions commit there before the UI publishes them.
 - `BreakBarExport` renders correction-aware daily history and safely replaces BreakBar’s marked Markdown section.
 - `BreakBarApp` is the always-available Mac presentation/input implementation and integrates Sparkle for signed updates.

@@ -17,11 +17,23 @@ let package = Package(
             url: "https://github.com/sparkle-project/Sparkle",
             exact: "2.9.6"
         ),
+        .package(
+            url: "https://github.com/apple/swift-protobuf.git",
+            exact: "1.38.1"
+        ),
     ],
     targets: [
         .systemLibrary(name: "CSQLite"),
         .target(name: "BreakBarCore"),
-        .target(name: "BreakBarBusyBar"),
+        .target(
+            name: "BreakBarBusyBar",
+            dependencies: [
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+            ],
+            plugins: [
+                .plugin(name: "SwiftProtobufPlugin", package: "swift-protobuf"),
+            ]
+        ),
         .target(
             name: "BreakBarPersistence",
             dependencies: ["BreakBarCore", "CSQLite"]
@@ -51,7 +63,10 @@ let package = Package(
         ),
         .testTarget(
             name: "BreakBarBusyBarTests",
-            dependencies: ["BreakBarBusyBar"]
+            dependencies: [
+                "BreakBarBusyBar",
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+            ]
         ),
         .testTarget(
             name: "BreakBarPersistenceTests",

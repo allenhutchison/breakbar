@@ -21,6 +21,31 @@ final class BusyBarHTTPClientTests: XCTestCase {
         XCTAssertEqual(request.httpMethod, "GET")
         XCTAssertEqual(request.url?.path, "/api/version")
         XCTAssertEqual(request.timeoutInterval, 5)
+        XCTAssertEqual(
+            request.value(forHTTPHeaderField: "X-Busy-Api-Version"),
+            "27.5.0"
+        )
+    }
+
+    func testVerifiesCompatibleAPIVersion() async throws {
+        let transport = RecordingTransport(
+            statusCode: 200,
+            data: Data(#"{"api_semver":"27.6.4"}"#.utf8)
+        )
+        let client = try BusyBarHTTPClient(
+            baseURL: try XCTUnwrap(URL(string: "http://busybar.local")),
+            transport: transport
+        )
+
+        let compatibility = try await client.verifyCompatibility()
+
+        XCTAssertEqual(
+            compatibility,
+            try BusyBarAPICompatibility(
+                clientVersion: "27.5.0",
+                deviceVersion: "27.6.4"
+            )
+        )
     }
 
     func testDrawsNamespacedSelfClearingFrontText() async throws {
@@ -104,7 +129,7 @@ final class BusyBarHTTPClientTests: XCTestCase {
         )
     }
 
-    func testReportsHTTPStatusWithoutIncludingResponseBody() async throws {
+    func testReportsDisplayConflictWithoutIncludingResponseBody() async throws {
         let transport = RecordingTransport(
             statusCode: 409,
             data: Data(#"{"error":"Not drawn due to low priority"}"#.utf8)
@@ -118,7 +143,37 @@ final class BusyBarHTTPClientTests: XCTestCase {
             try await client.drawFrontText("BUSY", timeoutSeconds: 3)
             XCTFail("Expected an HTTP status error")
         } catch {
-            XCTAssertEqual(error as? BusyBarHTTPError, .unexpectedStatus(409))
+            XCTAssertEqual(error as? BusyBarHTTPError, .displayConflict)
+        }
+    }
+
+    func testReportsAuthenticationAndUnexpectedStatusErrors() async throws {
+        for statusCode in [401, 403] {
+            let transport = RecordingTransport(statusCode: statusCode)
+            let client = try BusyBarHTTPClient(
+                baseURL: try XCTUnwrap(URL(string: "http://busybar.local")),
+                transport: transport
+            )
+
+            do {
+                _ = try await client.apiVersion()
+                XCTFail("Expected authentication to fail")
+            } catch {
+                XCTAssertEqual(error as? BusyBarHTTPError, .authenticationRequired)
+            }
+        }
+
+        let transport = RecordingTransport(statusCode: 500)
+        let client = try BusyBarHTTPClient(
+            baseURL: try XCTUnwrap(URL(string: "http://busybar.local")),
+            transport: transport
+        )
+
+        do {
+            _ = try await client.apiVersion()
+            XCTFail("Expected an HTTP status error")
+        } catch {
+            XCTAssertEqual(error as? BusyBarHTTPError, .unexpectedStatus(500))
         }
     }
 }

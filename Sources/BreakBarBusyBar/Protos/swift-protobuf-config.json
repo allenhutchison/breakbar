@@ -1,0 +1,24 @@
+{
+    "invocations": [
+        {
+            "protoFiles": [
+                "error.proto",
+                "frame.proto",
+                "input.proto",
+                "state.proto",
+                "state/audio.proto",
+                "state/ble.proto",
+                "state/brightness.proto",
+                "state/device_name.proto",
+                "state/matter.proto",
+                "state/power.proto",
+                "state/timezone.proto",
+                "state/update.proto",
+                "state/wifi.proto",
+                "timer.proto",
+                "util/json.proto"
+            ],
+            "visibility": "internal"
+        }
+    ]
+}

@@ -32,7 +32,11 @@ public enum BusyBarHTTPError: Error, Equatable, Sendable {
     case invalidBaseURL
     case invalidText
     case invalidTimeout
+    case invalidAPIVersion(String)
+    case incompatibleAPIVersion(client: String, device: String)
     case nonHTTPResponse
+    case authenticationRequired
+    case displayConflict
     case unexpectedStatus(Int)
 }
 
@@ -64,6 +68,12 @@ public struct BusyBarHTTPClient: Sendable {
         let request = makeRequest(path: "api/version", method: "GET")
         let data = try await perform(request)
         return try JSONDecoder().decode(BusyBarAPIVersion.self, from: data)
+    }
+
+    @discardableResult
+    public func verifyCompatibility() async throws -> BusyBarAPICompatibility {
+        let version = try await apiVersion()
+        return try BusyBarAPICompatibility(deviceVersion: version.semanticVersion)
     }
 
     /// Draws centered text on the 72 x 16 front display. A non-zero timeout is
@@ -137,6 +147,10 @@ public struct BusyBarHTTPClient: Sendable {
 
     private func configure(_ request: inout URLRequest) {
         request.timeoutInterval = 5
+        request.setValue(
+            BusyBarAPICompatibility.clientVersion,
+            forHTTPHeaderField: "X-Busy-Api-Version"
+        )
         if let apiToken {
             request.setValue(apiToken, forHTTPHeaderField: "X-API-Token")
         }
@@ -144,10 +158,16 @@ public struct BusyBarHTTPClient: Sendable {
 
     private func perform(_ request: URLRequest) async throws -> Data {
         let (data, response) = try await transport.data(for: request)
-        guard 200 ..< 300 ~= response.statusCode else {
+        switch response.statusCode {
+        case 200 ..< 300:
+            return data
+        case 401, 403:
+            throw BusyBarHTTPError.authenticationRequired
+        case 409:
+            throw BusyBarHTTPError.displayConflict
+        default:
             throw BusyBarHTTPError.unexpectedStatus(response.statusCode)
         }
-        return data
     }
 }
 
