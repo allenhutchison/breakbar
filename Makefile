@@ -21,7 +21,7 @@ SPARKLE_FRAMEWORK_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATIO
 SPARKLE_LICENSE_SOURCE = $(CURDIR)/.build/artifacts/sparkle/Sparkle/LICENSE
 SIGNING_IDENTITY ?= -
 
-.PHONY: build bundle release-bundle test run demo
+.PHONY: build bundle release-bundle test test-busybar-hardware run demo
 
 build:
 	$(SWIFT_ENV) swift build $(SWIFT_PATHS) --configuration $(CONFIGURATION)
@@ -68,6 +68,10 @@ release-bundle:
 
 test:
 	$(SWIFT_ENV) swift test $(SWIFT_PATHS)
+
+test-busybar-hardware:
+	BREAKBAR_BUSYBAR_ACCEPTANCE=1 $(SWIFT_ENV) swift test $(SWIFT_PATHS) \
+		--filter BusyBarHardwareAcceptanceTests/testPhysicalInputsOverUSB
 
 run: bundle
 	open -n $(APP_BUNDLE)

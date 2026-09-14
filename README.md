@@ -50,6 +50,19 @@ make test
 make build
 ```
 
+With a BUSY Bar connected over USB, its opt-in acceptance test verifies the
+real API version, WebSocket state stream, forwarded input loopback, and physical
+buttons, selector, and wheel:
+
+```sh
+make test-busybar-hardware
+```
+
+The test waits up to 90 seconds for the physical controls and remains skipped
+during normal and CI test runs. `BREAKBAR_BUSYBAR_URL` can override the default
+USB address; `BREAKBAR_BUSYBAR_API_TOKEN` supplies a local access token without
+placing it in source or command output.
+
 ## Contributing
 
 Issues and feature discussions are welcome. BreakBar is maintainer-directed:
