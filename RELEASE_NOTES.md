@@ -1,12 +1,13 @@
-# BreakBar 0.4.0
+# BreakBar 0.5.0
 
-BreakBar 0.4.0 adds signed automatic updates.
+BreakBar 0.5.0 introduces a new Open Timer identity and prepares the project for public contribution.
 
 ## Highlights
 
-- Checks the GitHub release channel automatically and installs updates when BreakBar is ready to relaunch.
-- Adds manual update checks to the menu-bar popover and Settings.
-- Verifies downloaded archives with a dedicated EdDSA signature before extraction.
+- Adds the new BreakBar app icon to the macOS bundle and idle menu-bar popover.
+- Refreshes the website, favicon, social metadata, and README around the new identity.
+- Opens the project under the MIT License with contribution, security, and issue-reporting guidance.
+- Updates Sparkle to 2.9.6 with upstream security fixes and enables automated dependency maintenance.
 
 ## Privacy
 
