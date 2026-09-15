@@ -46,6 +46,7 @@ final class AppModel: ObservableObject {
     private var busyBarEventsTask: Task<Void, Never>?
     private var busyBarCleanupTask: Task<Void, Never>?
     private var busyBarGeneration = UUID()
+    private var busyBarRenderRequest = UUID()
     private var observations = Set<AnyCancellable>()
 
     init() {
@@ -929,6 +930,7 @@ final class AppModel: ObservableObject {
 
     private func configureBusyBar() {
         busyBarGeneration = UUID()
+        busyBarRenderRequest = UUID()
         let generation = busyBarGeneration
         busyBarConnectionTask?.cancel()
         busyBarEventsTask?.cancel()
@@ -1024,13 +1026,23 @@ final class AppModel: ObservableObject {
     ) {
         guard busyBarEnabled, let accessory = busyBarAccessory else { return }
         let generation = busyBarGeneration
+        let renderRequest = UUID()
+        busyBarRenderRequest = renderRequest
         Task { [weak self] in
+            guard let self,
+                  self.busyBarEnabled,
+                  generation == self.busyBarGeneration,
+                  renderRequest == self.busyBarRenderRequest
+            else {
+                return
+            }
+
             do {
                 try await accessory.render(presentation, revision: revision)
             } catch {
-                guard let self,
-                      self.busyBarEnabled,
-                      generation == self.busyBarGeneration
+                guard self.busyBarEnabled,
+                      generation == self.busyBarGeneration,
+                      renderRequest == self.busyBarRenderRequest
                 else {
                     return
                 }
