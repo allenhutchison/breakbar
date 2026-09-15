@@ -176,6 +176,16 @@ final class BusyBarHTTPClientTests: XCTestCase {
             XCTAssertEqual(error as? BusyBarHTTPError, .unexpectedStatus(500))
         }
     }
+
+    func testRejectsBaseURLWithEndpointPath() throws {
+        XCTAssertThrowsError(
+            try BusyBarHTTPClient(
+                baseURL: XCTUnwrap(URL(string: "http://busybar.local/proxy"))
+            )
+        ) { error in
+            XCTAssertEqual(error as? BusyBarHTTPError, .invalidBaseURL)
+        }
+    }
 }
 
 private actor RecordingTransport: BusyBarHTTPTransport {

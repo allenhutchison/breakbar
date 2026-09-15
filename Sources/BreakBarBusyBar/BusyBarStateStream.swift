@@ -26,7 +26,8 @@ public struct BusyBarStateStream: BusyBarStateStreaming, Sendable {
             resolvingAgainstBaseURL: false
         ), let scheme = components.scheme?.lowercased(),
            scheme == "http" || scheme == "https",
-           components.host != nil
+           components.host != nil,
+           components.path.isEmpty || components.path == "/"
         else {
             throw BusyBarStateStreamError.invalidBaseURL
         }

@@ -13,7 +13,7 @@ final class BusyBarStateStreamTests: XCTestCase {
 
     func testBuildsSecureAuthenticatedWebSocketURL() throws {
         let stream = try BusyBarStateStream(
-            baseURL: try XCTUnwrap(URL(string: "https://busybar.local:8443/old?discard=true")),
+            baseURL: try XCTUnwrap(URL(string: "https://busybar.local:8443")),
             apiToken: "token with spaces"
         )
 
@@ -31,6 +31,16 @@ final class BusyBarStateStreamTests: XCTestCase {
         XCTAssertThrowsError(
             try BusyBarStateStream(
                 baseURL: XCTUnwrap(URL(string: "file:///tmp/busybar"))
+            )
+        ) { error in
+            XCTAssertEqual(error as? BusyBarStateStreamError, .invalidBaseURL)
+        }
+    }
+
+    func testRejectsBaseURLWithEndpointPath() throws {
+        XCTAssertThrowsError(
+            try BusyBarStateStream(
+                baseURL: XCTUnwrap(URL(string: "http://busybar.local/proxy"))
             )
         ) { error in
             XCTAssertEqual(error as? BusyBarStateStreamError, .invalidBaseURL)

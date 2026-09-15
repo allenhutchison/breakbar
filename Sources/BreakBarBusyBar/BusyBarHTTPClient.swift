@@ -64,7 +64,8 @@ public struct BusyBarHTTPClient: BusyBarDeviceClient, Sendable {
     ) throws {
         guard let scheme = baseURL.scheme?.lowercased(),
               scheme == "http" || scheme == "https",
-              baseURL.host != nil
+              baseURL.host != nil,
+              baseURL.path.isEmpty || baseURL.path == "/"
         else {
             throw BusyBarHTTPError.invalidBaseURL
         }
