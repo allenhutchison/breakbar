@@ -19,6 +19,11 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     private var lastRenderedDisplay: DisplayContent?
     private var desiredAction: DesiredAction?
     private var displayWriteInProgress = false
+    private var displayWriteTask: (id: UUID, task: Task<Void, Error>)?
+    private var displayFlushWaiters: [CheckedContinuation<Void, Never>] = []
+    private var lifecycleGeneration = UUID()
+    private var isConnected = false
+    private var isDisconnecting = false
     private var isPresent = false
 
     public init(baseURL: URL, apiToken: String? = nil) throws {
@@ -41,9 +46,16 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     }
 
     public func connect() async throws {
-        guard inputTask == nil else { return }
+        guard inputTask == nil, !isConnected else { return }
+        guard !isDisconnecting else { throw CancellationError() }
 
+        let generation = lifecycleGeneration
         _ = try await device.verifyCompatibility()
+        try Task.checkCancellation()
+        guard generation == lifecycleGeneration, !isDisconnecting else {
+            throw CancellationError()
+        }
+        isConnected = true
         inputTask = Task { [weak self] in
             await self?.runInputLoop()
         }
@@ -53,6 +65,10 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     }
 
     public func disconnect() async {
+        guard !isDisconnecting else { return }
+        isDisconnecting = true
+        lifecycleGeneration = UUID()
+        isConnected = false
         inputTask?.cancel()
         refreshTask?.cancel()
         inputTask = nil
@@ -61,16 +77,25 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
         desiredDisplay = nil
         lastRenderedDisplay = nil
         setPresence(false)
+
+        let activeWrite = displayWriteTask
+        activeWrite?.task.cancel()
+        if let activeWrite {
+            _ = await activeWrite.task.result
+        }
+        await waitForDisplayFlush()
         try? await device.clearOwnedDisplay()
+        isDisconnecting = false
     }
 
     public func render(
         _ presentation: BreakBarPresentation,
         revision: UInt64
     ) async throws {
+        guard isConnected, !isDisconnecting else { throw CancellationError() }
         desiredAction = DesiredAction(presentation: presentation, revision: revision)
         desiredDisplay = DisplayContent(presentation: presentation)
-        try await flushDisplay(force: false)
+        try await flushDisplay(force: false, generation: lifecycleGeneration)
     }
 
     public nonisolated func events() -> AsyncStream<AccessoryEvent> {
@@ -109,7 +134,7 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
         while !Task.isCancelled {
             do {
                 try await Task.sleep(for: Self.displayRefreshInterval)
-                try await flushDisplay(force: true)
+                try await flushDisplay(force: true, generation: lifecycleGeneration)
             } catch is CancellationError {
                 return
             } catch {
@@ -137,27 +162,65 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
         }
     }
 
-    private func flushDisplay(force: Bool) async throws {
+    private func flushDisplay(force: Bool, generation: UUID) async throws {
         guard !displayWriteInProgress else { return }
         displayWriteInProgress = true
-        defer { displayWriteInProgress = false }
+        defer {
+            displayWriteInProgress = false
+            let waiters = displayFlushWaiters
+            displayFlushWaiters.removeAll()
+            for waiter in waiters {
+                waiter.resume()
+            }
+        }
 
         var forceNextWrite = force
-        while let desiredDisplay {
+        while generation == lifecycleGeneration,
+              isConnected,
+              !isDisconnecting,
+              let desiredDisplay
+        {
             if !forceNextWrite, desiredDisplay == lastRenderedDisplay {
                 return
             }
 
             let displayToWrite = desiredDisplay
-            do {
+            let writeID = UUID()
+            let writeTask = Task {
                 try await device.drawFrontText(
                     displayToWrite.text,
                     color: displayToWrite.color,
                     timeoutSeconds: Self.displayTimeoutSeconds
                 )
+            }
+            displayWriteTask = (writeID, writeTask)
+            do {
+                try await withTaskCancellationHandler {
+                    try await writeTask.value
+                } onCancel: {
+                    writeTask.cancel()
+                }
+                if displayWriteTask?.id == writeID {
+                    displayWriteTask = nil
+                }
+                guard generation == lifecycleGeneration,
+                      isConnected,
+                      !isDisconnecting
+                else {
+                    throw CancellationError()
+                }
                 lastRenderedDisplay = displayToWrite
                 setPresence(true)
             } catch {
+                if displayWriteTask?.id == writeID {
+                    displayWriteTask = nil
+                }
+                guard generation == lifecycleGeneration,
+                      isConnected,
+                      !isDisconnecting
+                else {
+                    throw CancellationError()
+                }
                 setPresence(false)
                 throw error
             }
@@ -166,6 +229,13 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
             if self.desiredDisplay == displayToWrite {
                 return
             }
+        }
+    }
+
+    private func waitForDisplayFlush() async {
+        guard displayWriteInProgress else { return }
+        await withCheckedContinuation { continuation in
+            displayFlushWaiters.append(continuation)
         }
     }
 

@@ -111,6 +111,44 @@ final class BusyBarAccessoryTests: XCTestCase {
 
         await accessory.disconnect()
     }
+
+    func testDisconnectDrainsActiveDisplayWriteBeforeClearing() async throws {
+        let device = DelayedBusyBarDevice()
+        let stateStream = ControlledBusyBarStateStream()
+        let accessory = BusyBarAccessory(device: device, stateStream: stateStream)
+        let now = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        let state = BreakBarState(
+            phase: .focusing,
+            phaseStartedAt: now,
+            nominalFocusDueAt: now.addingTimeInterval(55 * 60),
+            focusDueAt: now.addingTimeInterval(55 * 60),
+            revision: 4
+        )
+
+        try await accessory.connect()
+        let drawStarted = Task { await device.waitForDrawToStart() }
+        let renderTask = Task {
+            try await accessory.render(
+                BreakBarPresentation(state: state, policy: .standard, now: now),
+                revision: state.revision
+            )
+        }
+        await drawStarted.value
+
+        let drawCancelled = Task { await device.waitForDrawCancellation() }
+        let disconnectTask = Task { await accessory.disconnect() }
+        await drawCancelled.value
+        let operationsBeforeRelease = await device.recordedOperations()
+        XCTAssertEqual(operationsBeforeRelease, [.drawStarted])
+
+        await device.completeDraw()
+        await disconnectTask.value
+        if case .success = await renderTask.result {
+            XCTFail("Expected the disconnected render to be rejected")
+        }
+        let finalOperations = await device.recordedOperations()
+        XCTAssertEqual(finalOperations, [.drawStarted, .drawFinished, .clear])
+    }
 }
 
 private struct RecordedDraw: Equatable, Sendable {
@@ -146,6 +184,68 @@ private actor RecordingBusyBarDevice: BusyBarDeviceClient {
     func compatibilityChecks() -> Int { checks }
     func recordedDraws() -> [RecordedDraw] { draws }
     func clearCount() -> Int { clears }
+}
+
+private enum DelayedDeviceOperation: Equatable, Sendable {
+    case drawStarted
+    case drawFinished
+    case clear
+}
+
+private actor DelayedBusyBarDevice: BusyBarDeviceClient {
+    private nonisolated let drawStarted: AsyncStream<Void>
+    private nonisolated let drawStartedContinuation: AsyncStream<Void>.Continuation
+    private nonisolated let drawCancelled: AsyncStream<Void>
+    private nonisolated let drawCancelledContinuation: AsyncStream<Void>.Continuation
+    private var drawContinuation: CheckedContinuation<Void, Never>?
+    private var operations: [DelayedDeviceOperation] = []
+
+    init() {
+        (drawStarted, drawStartedContinuation) = AsyncStream.makeStream(of: Void.self)
+        (drawCancelled, drawCancelledContinuation) = AsyncStream.makeStream(of: Void.self)
+    }
+
+    func verifyCompatibility() async throws -> BusyBarAPICompatibility {
+        try BusyBarAPICompatibility(deviceVersion: "27.5.0")
+    }
+
+    func drawFrontText(
+        _ text: String,
+        color: String,
+        timeoutSeconds: Int
+    ) async throws {
+        operations.append(.drawStarted)
+        drawStartedContinuation.yield()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                drawContinuation = continuation
+            }
+        } onCancel: {
+            drawCancelledContinuation.yield()
+        }
+        operations.append(.drawFinished)
+    }
+
+    func clearOwnedDisplay() async throws {
+        operations.append(.clear)
+    }
+
+    nonisolated func waitForDrawToStart() async {
+        for await _ in drawStarted { return }
+    }
+
+    nonisolated func waitForDrawCancellation() async {
+        for await _ in drawCancelled { return }
+    }
+
+    func completeDraw() {
+        drawContinuation?.resume()
+        drawContinuation = nil
+    }
+
+    func recordedOperations() -> [DelayedDeviceOperation] {
+        operations
+    }
 }
 
 private final class ControlledBusyBarStateStream: BusyBarStateStreaming,
