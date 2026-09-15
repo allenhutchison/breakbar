@@ -85,11 +85,7 @@ struct SettingsView: View {
 
             ObsidianSettingsSection(model: model)
 
-            Section("Accessories") {
-                Text("No accessories installed")
-                Text("BUSY Bar support will be added as an optional plugin after hardware validation.")
-                    .foregroundStyle(.secondary)
-            }
+            BusyBarSettingsSection(model: model)
 
             Section("Updates") {
                 Button("Check for Updates…", action: checkForUpdates)
@@ -100,7 +96,71 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding()
-        .frame(width: 520, height: 680)
+        .frame(width: 520, height: 720)
+    }
+}
+
+private struct BusyBarSettingsSection: View {
+    @ObservedObject var model: AppModel
+    @State private var address: String
+    @State private var addressIsInvalid = false
+    @FocusState private var addressIsFocused: Bool
+
+    init(model: AppModel) {
+        self.model = model
+        _address = State(initialValue: model.busyBarAddress)
+    }
+
+    var body: some View {
+        Section("BUSY Bar") {
+            Toggle(
+                "Use BUSY Bar accessory",
+                isOn: Binding(
+                    get: { model.busyBarEnabled },
+                    set: model.setBusyBarEnabled
+                )
+            )
+
+            LabeledContent("Connection", value: model.busyBarConnectionState.label)
+
+            LabeledContent("Device address") {
+                TextField("", text: $address)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(.body, design: .monospaced))
+                    .frame(width: 190)
+                    .focused($addressIsFocused)
+                    .onSubmit(commitAddress)
+                    .onChange(of: addressIsFocused) { _, focused in
+                        if !focused { commitAddress() }
+                    }
+                    .onChange(of: model.busyBarAddress) { _, newAddress in
+                        if !addressIsFocused {
+                            address = newAddress
+                            addressIsInvalid = false
+                        }
+                    }
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 5)
+                            .stroke(addressIsInvalid ? Color.red : .clear, lineWidth: 1)
+                    }
+                    .accessibilityLabel("BUSY Bar device address")
+                    .accessibilityHint("Enter an HTTP or HTTPS device address without a path.")
+            }
+
+            Text(
+                "Connect the BUSY Bar over USB, then enable it here. "
+                    + "BreakBar remains fully functional when the accessory is off or unavailable."
+            )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func commitAddress() {
+        addressIsInvalid = !model.setBusyBarAddress(address)
+        if !addressIsInvalid {
+            address = model.busyBarAddress
+        }
     }
 }
 

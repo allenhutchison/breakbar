@@ -33,6 +33,8 @@ The app launches quietly in the menu bar, where its status item shows the live c
 
 Open **Settings** from the menu-bar menu to change the focus interval, warning duration, minimum break, and idle-away threshold. Each timing control accepts a two-digit minute value or can be adjusted with its adjacent arrows. Invalid values are clamped to the supported range, and normal-mode preferences persist across app restarts. Use **Restore timing defaults** to return to the standard 55-minute focus, 5-minute warning, 5-minute minimum break, and 10-minute idle threshold. Timing controls are unavailable in demo mode so its accelerated cycle remains unchanged.
 
+BUSY Bar support is optional and disabled by default. Connect the device over USB, then enable **Use BUSY Bar accessory** in **Settings → BUSY Bar**. The default USB address is `http://10.0.4.20`; it can be replaced with another explicit HTTP or HTTPS device address. BreakBar mirrors its current state to a self-clearing display element, reconnects automatically, and maps the BUSY Bar START button to the action currently offered by the Mac. Every input is revision-checked before it enters the same persisted command path as the Mac UI. Wi-Fi discovery and credential storage are not part of this USB-first integration.
+
 When activity resumes after the Mac has been idle for the configured threshold while BreakBar is clocked out, a one-time **Ready to work?** prompt offers to clock in. Choosing **Not yet** dismisses the prompt until another qualifying idle-and-return cycle; BreakBar never backdates the clock-in time.
 
 Connect and select calendars in **Settings** to let BreakBar plan around meetings, lunch, and travel. Lunch matching is case-insensitive and requires `Lunch` as a complete word in the event title, so a title such as `Lunchroom planning` does not match. BreakBar prompts at the event start without automatically changing your activity; choose **Start lunch** to pause break enforcement or **Keep working** to dismiss that occurrence. If an unclassified idle interval overlaps lunch, the return prompt marks Lunch as the suggested classification.
@@ -49,6 +51,19 @@ An event whose title contains `Travel`, `Commute`, or `Drive` starts a travel ch
 make test
 make build
 ```
+
+With a BUSY Bar connected over USB, its opt-in acceptance test verifies the
+real API version, WebSocket state stream, forwarded input loopback, and physical
+buttons, selector, and wheel:
+
+```sh
+make test-busybar-hardware
+```
+
+The test waits up to 90 seconds for the physical controls and remains skipped
+during normal and CI test runs. `BREAKBAR_BUSYBAR_URL` can override the default
+USB address; `BREAKBAR_BUSYBAR_API_TOKEN` supplies a local access token without
+placing it in source or command output.
 
 ## Contributing
 
@@ -71,10 +86,10 @@ The Makefile selects the installed Xcode beta because this machine’s currently
 ## Architecture
 
 - `BreakBarCore` contains the deterministic state machine, policy, presentation model, and accessory protocol. It has no UI or hardware dependency.
+- `BreakBarBusyBar` contains the optional BUSY Bar HTTP/WebSocket transport, namespaced self-clearing display operations, API compatibility checks, official-protobuf input decoding, and reconnecting accessory adapter. `BreakBarApp` owns the opt-in lifecycle and revision-checks actions before routing them to the Mac state machine, so the Mac-only path stays complete.
 - `BreakBarPersistence` owns the migration-capable SQLite session ledger and recoverable state snapshot. Timer transitions commit there before the UI publishes them.
 - `BreakBarExport` renders correction-aware daily history and safely replaces BreakBar’s marked Markdown section.
 - `BreakBarApp` is the always-available Mac presentation/input implementation and integrates Sparkle for signed updates.
-- A future BUSY Bar target will conform to `BreakBarAccessory` after its shipping API has been validated.
 
 Normal and demo runs use separate databases under BreakBar’s Application Support directory, so accelerated cycles never enter real work history. Existing `state.json` state is imported once when the normal SQLite database is first created and retained as a recovery artifact.
 

@@ -13,9 +13,9 @@ public struct AccessoryCapabilities: OptionSet, Sendable {
     public static let presence = AccessoryCapabilities(rawValue: 1 << 3)
 }
 
-public enum AccessoryEvent: Sendable {
-    case startBreak(id: UUID)
-    case returnToFocus(id: UUID)
+public enum AccessoryEvent: Equatable, Sendable {
+    case startBreak(id: UUID, revision: UInt64)
+    case returnToFocus(id: UUID, revision: UInt64)
     case presenceChanged(isPresent: Bool, id: UUID)
 }
 

@@ -8,6 +8,7 @@ let package = Package(
     products: [
         .executable(name: "BreakBar", targets: ["BreakBarApp"]),
         .library(name: "BreakBarCore", targets: ["BreakBarCore"]),
+        .library(name: "BreakBarBusyBar", targets: ["BreakBarBusyBar"]),
         .library(name: "BreakBarPersistence", targets: ["BreakBarPersistence"]),
         .library(name: "BreakBarExport", targets: ["BreakBarExport"]),
     ],
@@ -16,10 +17,27 @@ let package = Package(
             url: "https://github.com/sparkle-project/Sparkle",
             exact: "2.9.6"
         ),
+        .package(
+            url: "https://github.com/apple/swift-protobuf.git",
+            exact: "1.38.1"
+        ),
     ],
     targets: [
         .systemLibrary(name: "CSQLite"),
         .target(name: "BreakBarCore"),
+        .target(
+            name: "BreakBarBusyBar",
+            dependencies: [
+                "BreakBarCore",
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+            ],
+            resources: [
+                .copy("Protos/swift-protobuf-config.json"),
+            ],
+            plugins: [
+                .plugin(name: "SwiftProtobufPlugin", package: "swift-protobuf"),
+            ]
+        ),
         .target(
             name: "BreakBarPersistence",
             dependencies: ["BreakBarCore", "CSQLite"]
@@ -32,6 +50,7 @@ let package = Package(
             name: "BreakBarApp",
             dependencies: [
                 "BreakBarCore",
+                "BreakBarBusyBar",
                 "BreakBarPersistence",
                 "BreakBarExport",
                 .product(name: "Sparkle", package: "Sparkle"),
@@ -46,6 +65,14 @@ let package = Package(
         .testTarget(
             name: "BreakBarCoreTests",
             dependencies: ["BreakBarCore"]
+        ),
+        .testTarget(
+            name: "BreakBarBusyBarTests",
+            dependencies: [
+                "BreakBarCore",
+                "BreakBarBusyBar",
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+            ]
         ),
         .testTarget(
             name: "BreakBarPersistenceTests",
