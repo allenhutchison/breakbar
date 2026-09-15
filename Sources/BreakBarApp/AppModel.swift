@@ -228,12 +228,13 @@ final class AppModel: ObservableObject {
         apply(.clockOut)
     }
 
-    func emergencyClockOut() {
-        apply(.emergencyClockOut)
-    }
-
     func startBreak() {
         beginBreak(with: .startBreak)
+    }
+
+    func deferBreak() {
+        let duration = isDemoMode ? policy.warningDuration : 5 * 60
+        apply(.deferBreak(by: duration))
     }
 
     func startLunch() {
@@ -277,10 +278,6 @@ final class AppModel: ObservableObject {
             applyCurrentCallActivity(at: eventDate)
             _ = apply(.tick, at: eventDate)
         }
-    }
-
-    func emergencyStartBreak() {
-        beginBreak(with: .emergencyStartBreak)
     }
 
     func returnToFocus() {
@@ -1177,9 +1174,9 @@ final class AppModel: ObservableObject {
         } else if state.phase == .focusing && state.enforcement == .required {
             overlayController.show(
                 startBreak: { [weak self] in self?.startBreak() },
-                clockOut: { [weak self] in self?.clockOut() },
-                emergencyStartBreak: { [weak self] in self?.emergencyStartBreak() },
-                emergencyClockOut: { [weak self] in self?.emergencyClockOut() }
+                deferBreakTitle: isDemoMode ? "15 more seconds" : "5 more minutes",
+                deferBreak: { [weak self] in self?.deferBreak() },
+                clockOut: { [weak self] in self?.clockOut() }
             )
         } else {
             overlayController.hide()

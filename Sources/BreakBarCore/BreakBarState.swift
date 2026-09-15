@@ -27,6 +27,7 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case lifecycleReconciliation
     case emergencyStartBreak
     case emergencyClockOut
+    case breakDeferred
     case calendarPlanUpdated
     case scheduledMeetingStarted
     case scheduledMeetingEnded
@@ -58,6 +59,7 @@ public enum BreakPlanReason: String, Codable, Equatable, Sendable {
     case pulledBeforeMeeting
     case deferredThroughMeeting
     case postMeetingWarning
+    case userDeferred
 }
 
 public enum AwayClassification: String, Codable, Equatable, Sendable {
@@ -147,6 +149,7 @@ public enum BreakCommand: Equatable, Sendable {
     case reconcile
     case emergencyStartBreak
     case emergencyClockOut
+    case deferBreak(by: TimeInterval)
     case updateCalendarConstraints([BreakCalendarConstraint])
     case updateCallActivity(BreakCallSignal?)
     case acknowledgeTravel

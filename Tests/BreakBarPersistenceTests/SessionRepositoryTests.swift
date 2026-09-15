@@ -366,6 +366,34 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testBreakDeferralSurvivesReopenWithoutSplittingFocusHistory() throws {
+        try withRepository { repository, databaseURL in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            try commit(
+                .tick,
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+            try commit(
+                .deferBreak(by: 300),
+                at: origin.addingTimeInterval(60),
+                engine: &engine,
+                repository: repository
+            )
+
+            let reopened = try SessionRepository(url: databaseURL)
+            let recovered = try XCTUnwrap(reopened.loadState())
+            XCTAssertEqual(recovered.focusDueAt, origin.addingTimeInterval(360))
+            XCTAssertEqual(recovered.breakPlanReason, .userDeferred)
+            XCTAssertEqual(recovered.lastTransitionReason, .breakDeferred)
+            XCTAssertEqual(try reopened.stats().focusIntervals, 1)
+            XCTAssertEqual(try reopened.stats().openIntervals, 1)
+        }
+    }
+
     func testCalendarPlanPersistsWithoutSplittingFocusHistory() throws {
         try withRepository { repository, databaseURL in
             var engine = BreakBarEngine(policy: policy)
