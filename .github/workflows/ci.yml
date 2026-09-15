@@ -41,6 +41,8 @@ jobs:
           test -d .build/BreakBar.app/Contents/Frameworks/Sparkle.framework
           test -f .build/BreakBar.app/Contents/Resources/AppIcon.icns
           test -f .build/BreakBar.app/Contents/Resources/ThirdPartyLicenses/Sparkle.txt
+          test -f .build/BreakBar.app/Contents/Resources/ThirdPartyLicenses/SwiftProtobuf.txt
+          test -f .build/BreakBar.app/Contents/Resources/ThirdPartyLicenses/BUSYProtobuf.txt
 
       - name: Test
         run: make test

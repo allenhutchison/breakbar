@@ -28,7 +28,11 @@ let package = Package(
         .target(
             name: "BreakBarBusyBar",
             dependencies: [
+                "BreakBarCore",
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+            ],
+            resources: [
+                .copy("Protos/swift-protobuf-config.json"),
             ],
             plugins: [
                 .plugin(name: "SwiftProtobufPlugin", package: "swift-protobuf"),
@@ -46,6 +50,7 @@ let package = Package(
             name: "BreakBarApp",
             dependencies: [
                 "BreakBarCore",
+                "BreakBarBusyBar",
                 "BreakBarPersistence",
                 "BreakBarExport",
                 .product(name: "Sparkle", package: "Sparkle"),
@@ -64,6 +69,7 @@ let package = Package(
         .testTarget(
             name: "BreakBarBusyBarTests",
             dependencies: [
+                "BreakBarCore",
                 "BreakBarBusyBar",
                 .product(name: "SwiftProtobuf", package: "swift-protobuf"),
             ]

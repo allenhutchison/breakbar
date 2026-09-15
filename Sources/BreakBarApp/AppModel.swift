@@ -1,4 +1,5 @@
 import AppKit
+import BreakBarBusyBar
 import BreakBarCore
 import BreakBarExport
 import BreakBarPersistence
@@ -22,6 +23,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var obsidianFilenameFormat: String
     @Published private(set) var obsidianExportMessage: String?
     @Published private(set) var obsidianExportMessageIsError: Bool
+    @Published private(set) var busyBarEnabled: Bool
+    @Published private(set) var busyBarAddress: String
+    @Published private(set) var busyBarConnectionState: BusyBarConnectionState
 
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
@@ -37,6 +41,11 @@ final class AppModel: ObservableObject {
     private var clockedOutReturnDetector = ClockedOutReturnDetector()
     private var clockInPromptRequested = false
     private var ticker: Task<Void, Never>?
+    private var busyBarAccessory: BusyBarAccessory?
+    private var busyBarConnectionTask: Task<Void, Never>?
+    private var busyBarEventsTask: Task<Void, Never>?
+    private var busyBarCleanupTask: Task<Void, Never>?
+    private var busyBarGeneration = UUID()
     private var observations = Set<AnyCancellable>()
 
     init() {
@@ -95,6 +104,15 @@ final class AppModel: ObservableObject {
         ) ?? ObsidianExporter.defaultFilenameFormat
         obsidianExportMessage = nil
         obsidianExportMessageIsError = false
+        let initialBusyBarEnabled = UserDefaults.standard.bool(
+            forKey: Self.busyBarEnabledKey
+        )
+        busyBarEnabled = initialBusyBarEnabled
+        busyBarAddress = BusyBarAddress.normalized(
+            UserDefaults.standard.string(forKey: Self.busyBarAddressKey)
+                ?? BusyBarAddress.defaultUSB
+        ) ?? BusyBarAddress.defaultUSB
+        busyBarConnectionState = initialBusyBarEnabled ? .connecting : .off
         refreshLaunchAtLoginStatus()
 
         calendarMonitor.$schedulingConstraints
@@ -111,6 +129,19 @@ final class AppModel: ObservableObject {
             }
             .store(in: &observations)
 
+        Publishers.CombineLatest3($state, $policy, $now)
+            .sink { [weak self] values in
+                self?.renderBusyBar(
+                    BreakBarPresentation(
+                        state: values.0,
+                        policy: values.1,
+                        now: values.2
+                    ),
+                    revision: values.0.revision
+                )
+            }
+            .store(in: &observations)
+
         ticker = Task { [weak self] in
             while !Task.isCancelled {
                 let currentTime = Date().timeIntervalSince1970
@@ -124,10 +155,17 @@ final class AppModel: ObservableObject {
         Task { [weak self] in
             self?.tick()
         }
+
+        if busyBarEnabled {
+            configureBusyBar()
+        }
     }
 
     deinit {
         ticker?.cancel()
+        busyBarConnectionTask?.cancel()
+        busyBarEventsTask?.cancel()
+        busyBarCleanupTask?.cancel()
     }
 
     var presentation: BreakBarPresentation {
@@ -761,6 +799,27 @@ final class AppModel: ObservableObject {
         callActivityChanged(callActivityMonitor.signal)
     }
 
+    func setBusyBarEnabled(_ enabled: Bool) {
+        guard enabled != busyBarEnabled else { return }
+        busyBarEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: Self.busyBarEnabledKey)
+        configureBusyBar()
+    }
+
+    @discardableResult
+    func setBusyBarAddress(_ address: String) -> Bool {
+        guard let normalized = BusyBarAddress.normalized(address) else {
+            return false
+        }
+        guard normalized != busyBarAddress else { return true }
+        busyBarAddress = normalized
+        UserDefaults.standard.set(normalized, forKey: Self.busyBarAddressKey)
+        if busyBarEnabled {
+            configureBusyBar()
+        }
+        return true
+    }
+
     private static let allowUncorrelatedBrowserCallsKey =
         "call.allowUncorrelatedBrowserMicrophone"
 
@@ -772,6 +831,8 @@ final class AppModel: ObservableObject {
         "calendar.handledLunchPromptOccurrence"
     private static let obsidianDailyNotesFolderKey = "obsidian.dailyNotesFolder"
     private static let obsidianFilenameFormatKey = "obsidian.filenameFormat"
+    private static let busyBarEnabledKey = "accessory.busyBar.enabled"
+    private static let busyBarAddressKey = "accessory.busyBar.address"
 
     private static let demoPolicy = BreakPolicy(
         focusDuration: 60,
@@ -867,6 +928,138 @@ final class AppModel: ObservableObject {
         defaults.set(policy.warningDuration, forKey: warningDurationKey)
         defaults.set(policy.minimumBreakDuration, forKey: minimumBreakDurationKey)
         defaults.set(policy.idleThreshold, forKey: idleThresholdKey)
+    }
+
+    private func configureBusyBar() {
+        busyBarGeneration = UUID()
+        let generation = busyBarGeneration
+        busyBarConnectionTask?.cancel()
+        busyBarEventsTask?.cancel()
+        busyBarConnectionTask = nil
+        busyBarEventsTask = nil
+
+        let previousAccessory = busyBarAccessory
+        busyBarAccessory = nil
+        let earlierCleanup = busyBarCleanupTask
+        let cleanupTask = Task {
+            await earlierCleanup?.value
+            if let previousAccessory {
+                await previousAccessory.disconnect()
+            }
+        }
+        busyBarCleanupTask = cleanupTask
+
+        guard busyBarEnabled,
+              let baseURL = URL(string: busyBarAddress),
+              let accessory = try? BusyBarAccessory(baseURL: baseURL)
+        else {
+            busyBarConnectionState = .off
+            return
+        }
+
+        busyBarConnectionState = .connecting
+        busyBarConnectionTask = Task { [weak self] in
+            await cleanupTask.value
+            guard let self,
+                  !Task.isCancelled,
+                  self.busyBarEnabled,
+                  generation == self.busyBarGeneration
+            else {
+                return
+            }
+
+            self.busyBarAccessory = accessory
+            self.busyBarEventsTask = Task { [weak self] in
+                for await event in accessory.events() {
+                    guard !Task.isCancelled else { return }
+                    self?.handleBusyBarEvent(event, generation: generation)
+                }
+            }
+            await self.connectBusyBar(accessory, generation: generation)
+        }
+    }
+
+    private func connectBusyBar(
+        _ accessory: BusyBarAccessory,
+        generation: UUID
+    ) async {
+        var retryDelay = 1.0
+        while !Task.isCancelled,
+              busyBarEnabled,
+              generation == busyBarGeneration
+        {
+            do {
+                try await accessory.connect()
+                guard !Task.isCancelled,
+                      busyBarEnabled,
+                      generation == busyBarGeneration
+                else {
+                    return
+                }
+                busyBarConnectionState = .connected
+                renderBusyBar(presentation, revision: state.revision)
+                return
+            } catch {
+                guard !Task.isCancelled,
+                      busyBarEnabled,
+                      generation == busyBarGeneration
+                else {
+                    return
+                }
+                busyBarConnectionState = .unavailable
+            }
+
+            do {
+                try await Task.sleep(for: .seconds(retryDelay))
+            } catch {
+                return
+            }
+            retryDelay = min(30, retryDelay * 2)
+            if generation == busyBarGeneration {
+                busyBarConnectionState = .connecting
+            }
+        }
+    }
+
+    private func renderBusyBar(
+        _ presentation: BreakBarPresentation,
+        revision: UInt64
+    ) {
+        guard busyBarEnabled, let accessory = busyBarAccessory else { return }
+        let generation = busyBarGeneration
+        Task { [weak self] in
+            do {
+                try await accessory.render(presentation, revision: revision)
+            } catch {
+                guard let self,
+                      self.busyBarEnabled,
+                      generation == self.busyBarGeneration
+                else {
+                    return
+                }
+                self.busyBarConnectionState = .unavailable
+            }
+        }
+    }
+
+    private func handleBusyBarEvent(_ event: AccessoryEvent, generation: UUID) {
+        guard busyBarEnabled, generation == busyBarGeneration else { return }
+
+        if case .presenceChanged(let isPresent, _) = event {
+            busyBarConnectionState = isPresent ? .connected : .unavailable
+            return
+        }
+
+        switch BusyBarEventRouting.command(for: event, state: state) {
+        case .startBreak:
+            startBreak()
+        case .returnToFocus:
+            returnToFocus()
+        case nil:
+            break
+        default:
+            break
+        }
     }
 
     @discardableResult
@@ -1099,5 +1292,66 @@ enum ObsidianExportDaySelection {
         calendar: Calendar = .current
     ) -> [Date] {
         Array(Set(dates.map(calendar.startOfDay(for:)))).sorted()
+    }
+}
+
+enum BusyBarConnectionState: Equatable {
+    case off
+    case connecting
+    case connected
+    case unavailable
+
+    var label: String {
+        switch self {
+        case .off:
+            "Off"
+        case .connecting:
+            "Connecting…"
+        case .connected:
+            "Connected"
+        case .unavailable:
+            "Unavailable — retrying"
+        }
+    }
+}
+
+enum BusyBarAddress {
+    static let defaultUSB = "http://10.0.4.20"
+
+    static func normalized(_ address: String) -> String? {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard var components = URLComponents(string: trimmed),
+              let scheme = components.scheme?.lowercased(),
+              scheme == "http" || scheme == "https",
+              components.host != nil,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil,
+              components.path.isEmpty || components.path == "/"
+        else {
+            return nil
+        }
+        components.scheme = scheme
+        components.path = ""
+        return components.url?.absoluteString
+    }
+}
+
+enum BusyBarEventRouting {
+    static func command(
+        for event: AccessoryEvent,
+        state: BreakBarState
+    ) -> BreakCommand? {
+        switch event {
+        case .startBreak(_, let revision)
+            where revision == state.revision && state.phase == .focusing:
+            .startBreak
+        case .returnToFocus(_, let revision)
+            where revision == state.revision && state.phase == .onBreak:
+            .returnToFocus
+        default:
+            nil
+        }
     }
 }

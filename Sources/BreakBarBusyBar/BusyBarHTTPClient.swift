@@ -4,6 +4,16 @@ public protocol BusyBarHTTPTransport: Sendable {
     func data(for request: URLRequest) async throws -> (Data, HTTPURLResponse)
 }
 
+public protocol BusyBarDeviceClient: Sendable {
+    func verifyCompatibility() async throws -> BusyBarAPICompatibility
+    func drawFrontText(
+        _ text: String,
+        color: String,
+        timeoutSeconds: Int
+    ) async throws
+    func clearOwnedDisplay() async throws
+}
+
 public struct URLSessionBusyBarHTTPTransport: BusyBarHTTPTransport {
     private let session: URLSession
 
@@ -40,7 +50,7 @@ public enum BusyBarHTTPError: Error, Equatable, Sendable {
     case unexpectedStatus(Int)
 }
 
-public struct BusyBarHTTPClient: Sendable {
+public struct BusyBarHTTPClient: BusyBarDeviceClient, Sendable {
     public static let applicationName = "breakbar"
 
     private let baseURL: URL

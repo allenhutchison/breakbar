@@ -19,6 +19,8 @@ APP_ICON = $(CURDIR)/.build/AppIcon.icns
 SPARKLE_FRAMEWORK = $(APP_FRAMEWORKS)/Sparkle.framework
 SPARKLE_FRAMEWORK_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATION)/Sparkle.framework
 SPARKLE_LICENSE_SOURCE = $(CURDIR)/.build/artifacts/sparkle/Sparkle/LICENSE
+SWIFT_PROTOBUF_LICENSE_SOURCE = $(CURDIR)/.build/checkouts/swift-protobuf/LICENSE.txt
+BUSY_PROTOBUF_LICENSE_SOURCE = $(CURDIR)/Support/ThirdPartyLicenses/BUSYProtobuf.md
 SIGNING_IDENTITY ?= -
 
 .PHONY: build bundle release-bundle test test-busybar-hardware run demo
@@ -35,6 +37,8 @@ bundle: build $(APP_ICON)
 	cp $(APP_EXECUTABLE_SOURCE) $(APP_EXECUTABLE)
 	ditto $(SPARKLE_FRAMEWORK_SOURCE) $(SPARKLE_FRAMEWORK)
 	cp $(SPARKLE_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/Sparkle.txt
+	cp $(SWIFT_PROTOBUF_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/SwiftProtobuf.txt
+	cp $(BUSY_PROTOBUF_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/BUSYProtobuf.txt
 	cp $(APP_ICON) $(APP_RESOURCES)/AppIcon.icns
 	cp $(CURDIR)/Support/Info.plist $(APP_CONTENTS)/Info.plist
 	codesign --force --sign - --identifier app.breakbar.mac \
