@@ -1,17 +1,17 @@
-# BreakBar 0.5.0
+# BreakBar 0.6.0
 
-BreakBar 0.5.0 introduces a new Open Timer identity and prepares the project for public contribution.
+BreakBar 0.6.0 adds optional BUSY Bar hardware support and makes break enforcement more flexible.
 
 ## Highlights
 
-- Adds the new BreakBar app icon to the macOS bundle and idle menu-bar popover.
-- Refreshes the website, favicon, social metadata, and README around the new identity.
-- Opens the project under the MIT License with contribution, security, and issue-reporting guidance.
-- Updates Sparkle to 2.9.6 with upstream security fixes and enables automated dependency maintenance.
+- Connect an optional BUSY Bar to mirror the live timer and use its START button to begin or end breaks.
+- Defer a required break for five minutes without losing the current focus interval; deferrals survive restarts and calendar updates.
+- Launch BreakBar quietly in the menu bar, opening Settings only when requested.
+- Improve BUSY Bar connection recovery, display cleanup, input safety, and API compatibility handling.
 
 ## Privacy
 
-This release does not add any collection or storage of personal data.
+BUSY Bar communication stays between the Mac and the configured local device. This release adds no cloud service or collection of personal data.
 
 ## Requirements
 
