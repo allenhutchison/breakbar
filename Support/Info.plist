@@ -8,10 +8,10 @@
 	<string>BreakBar</string>
 	<key>CFBundleExecutable</key>
 	<string>BreakBar</string>
-	<key>CFBundleIdentifier</key>
-	<string>app.breakbar.mac</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.breakbar.mac</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
@@ -19,9 +19,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.5.0</string>
+	<string>0.6.0</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
 	<key>LSUIElement</key>
@@ -32,9 +32,9 @@
 	<string>BreakBar reads selected calendars to place breaks around meetings. It never edits events.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>BreakBar connects to an optional BUSY Bar to mirror timer state and receive button presses.</string>
-	<key>SUEnableAutomaticChecks</key>
-	<true/>
 	<key>SUAutomaticallyUpdate</key>
+	<true/>
+	<key>SUEnableAutomaticChecks</key>
 	<true/>
 	<key>SUFeedURL</key>
 	<string>https://github.com/allenhutchison/breakbar/releases/latest/download/appcast.xml</string>
