@@ -1,6 +1,22 @@
 import BreakBarCore
 import Foundation
 
+public struct BusyBarAccessoryDiagnostics: Equatable, Sendable {
+    public let deviceAPIVersion: String?
+    public let lastSuccessfulWriteAt: Date?
+    public let lastInputAt: Date?
+
+    public init(
+        deviceAPIVersion: String?,
+        lastSuccessfulWriteAt: Date?,
+        lastInputAt: Date?
+    ) {
+        self.deviceAPIVersion = deviceAPIVersion
+        self.lastSuccessfulWriteAt = lastSuccessfulWriteAt
+        self.lastInputAt = lastInputAt
+    }
+}
+
 public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     public nonisolated let identifier = "busy-bar"
     public nonisolated let capabilities: AccessoryCapabilities = [.display, .input, .presence]
@@ -12,6 +28,7 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     private let eventContinuation: AsyncStream<AccessoryEvent>.Continuation
     private let device: any BusyBarDeviceClient
     private let stateStream: any BusyBarStateStreaming
+    private let now: @Sendable () -> Date
 
     private var inputTask: Task<Void, Never>?
     private var refreshTask: Task<Void, Never>?
@@ -25,6 +42,9 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     private var isConnected = false
     private var isDisconnecting = false
     private var isPresent = false
+    private var deviceAPIVersion: String?
+    private var lastSuccessfulWriteAt: Date?
+    private var lastInputAt: Date?
 
     public init(baseURL: URL, apiToken: String? = nil) throws {
         let pair = AsyncStream.makeStream(of: AccessoryEvent.self)
@@ -32,17 +52,20 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
         eventContinuation = pair.continuation
         device = try BusyBarHTTPClient(baseURL: baseURL, apiToken: apiToken)
         stateStream = try BusyBarStateStream(baseURL: baseURL, apiToken: apiToken)
+        now = { Date() }
     }
 
     init(
         device: any BusyBarDeviceClient,
-        stateStream: any BusyBarStateStreaming
+        stateStream: any BusyBarStateStreaming,
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         let pair = AsyncStream.makeStream(of: AccessoryEvent.self)
         eventStream = pair.stream
         eventContinuation = pair.continuation
         self.device = device
         self.stateStream = stateStream
+        self.now = now
     }
 
     public func connect() async throws {
@@ -50,11 +73,12 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
         guard !isDisconnecting else { throw CancellationError() }
 
         let generation = lifecycleGeneration
-        _ = try await device.verifyCompatibility()
+        let compatibility = try await device.verifyCompatibility()
         try Task.checkCancellation()
         guard generation == lifecycleGeneration, !isDisconnecting else {
             throw CancellationError()
         }
+        deviceAPIVersion = compatibility.deviceVersion
         isConnected = true
         inputTask = Task { [weak self] in
             await self?.runInputLoop()
@@ -102,6 +126,14 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
         eventStream
     }
 
+    public func diagnostics() -> BusyBarAccessoryDiagnostics {
+        BusyBarAccessoryDiagnostics(
+            deviceAPIVersion: deviceAPIVersion,
+            lastSuccessfulWriteAt: lastSuccessfulWriteAt,
+            lastInputAt: lastInputAt
+        )
+    }
+
     private func runInputLoop() async {
         var retryDelay = 1.0
 
@@ -144,6 +176,7 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
     }
 
     private func handle(_ event: BusyBarInputEvent) {
+        lastInputAt = now()
         guard case .button(.start, action: .press) = event,
               let desiredAction
         else {
@@ -210,6 +243,7 @@ public actor BusyBarAccessory: BreakBarCore.BreakBarAccessory {
                     throw CancellationError()
                 }
                 lastRenderedDisplay = displayToWrite
+                lastSuccessfulWriteAt = now()
                 setPresence(true)
             } catch {
                 if displayWriteTask?.id == writeID {

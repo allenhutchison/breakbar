@@ -32,13 +32,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
             if let error {
                 NSLog("BreakBar could not request notification permission: %@", error.localizedDescription)
             } else if !granted {
                 NSLog("BreakBar notifications are disabled; warning sounds will still play.")
             }
+            Task { @MainActor [weak self] in
+                self?.refreshNotificationAccessState()
+            }
         }
+        refreshNotificationAccessState()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -50,6 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func applicationDidBecomeActive(_ notification: Notification) {
         model.refreshLaunchAtLoginStatus()
         model.calendarMonitor.refresh()
+        refreshNotificationAccessState()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -65,6 +70,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             model: model,
             checkForUpdates: checkForUpdates
         )
+    }
+
+    private func refreshNotificationAccessState() {
+        UNUserNotificationCenter.current().getNotificationSettings { [weak self] settings in
+            let state: NotificationAccessState
+            switch settings.authorizationStatus {
+            case .notDetermined:
+                state = .notDetermined
+            case .authorized, .provisional, .ephemeral:
+                state = .enabled
+            case .denied:
+                state = .disabled
+            @unknown default:
+                state = .unknown
+            }
+            Task { @MainActor [weak self] in
+                self?.model.setNotificationAccessState(state)
+            }
+        }
     }
 
     private func configureStatusItem() {
