@@ -461,14 +461,15 @@ final class AppModel: ObservableObject {
             exportStatus = .notAttempted
         }
 
+        let generatedAt = Date()
         let nextConstraint = calendarMonitor.schedulingConstraints
-            .filter { $0.endAt > now }
+            .filter { $0.endAt > generatedAt }
             .min { $0.startAt < $1.startAt }
         let info = Bundle.main.infoDictionary
 
         return DiagnosticsSnapshotBuilder.make(
             from: DiagnosticsSnapshotInput(
-                generatedAt: now,
+                generatedAt: generatedAt,
                 appVersion: info?["CFBundleShortVersionString"] as? String ?? "Development",
                 buildNumber: info?["CFBundleVersion"] as? String ?? "Local",
                 isDemoMode: isDemoMode,
