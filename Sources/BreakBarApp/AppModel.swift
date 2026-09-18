@@ -9,6 +9,11 @@ import ServiceManagement
 
 @MainActor
 final class AppModel: ObservableObject {
+    private enum ReturnPrompt {
+        case lunch
+        case travel
+    }
+
     @Published private(set) var state: BreakBarState
     @Published private(set) var now: Date
     @Published private(set) var lastMessage: String?
@@ -40,8 +45,10 @@ final class AppModel: ObservableObject {
     private let breakReturnPanelController = BreakReturnPanelController()
     private let awayReturnPanelController = AwayReturnPanelController()
     private let activityPromptPanelController = ActivityPromptPanelController()
-    private var clockedOutReturnDetector = ClockedOutReturnDetector()
+    private var clockedOutReturnDetector = IdleReturnDetector()
+    private var pausedReturnDetector = IdleReturnDetector()
     private var clockInPromptRequested = false
+    private var returnPromptRequested: ReturnPrompt?
     private var ticker: Task<Void, Never>?
     private var busyBarAccessory: BusyBarAccessory?
     private var busyBarConnectionTask: Task<Void, Never>?
@@ -233,6 +240,8 @@ final class AppModel: ObservableObject {
     func clockOut() {
         clockInPromptRequested = false
         clockedOutReturnDetector.reset()
+        returnPromptRequested = nil
+        pausedReturnDetector.reset()
         apply(.clockOut)
     }
 
@@ -797,11 +806,35 @@ final class AppModel: ObservableObject {
         guard idleDuration.isFinite, idleDuration >= 0 else { return .unchanged }
 
         if clockedOutReturnDetector.update(
-            isClockedOut: state.phase == .clockedOut,
+            isTracking: state.phase == .clockedOut,
             idleDuration: idleDuration,
             idleThreshold: policy.idleThreshold
         ) {
             clockInPromptRequested = true
+            synchronizeWindows(at: date)
+            return .changed
+        }
+
+        let tracksPausedReturn = state.phase == .onLunch
+            || state.phase == .traveling
+            || state.phase == .offsiteMeeting
+        let travelCanReturn = state.travelChain?.allSatisfy { $0.endAt <= date } ?? false
+        let canPromptForPausedReturn = state.phase == .onLunch || travelCanReturn
+        if pausedReturnDetector.update(
+            isTracking: tracksPausedReturn,
+            canPrompt: canPromptForPausedReturn,
+            idleDuration: idleDuration,
+            idleThreshold: policy.idleThreshold
+        ) {
+            switch state.phase {
+            case .onLunch:
+                returnPromptRequested = .lunch
+            case .traveling, .offsiteMeeting:
+                returnPromptRequested = .travel
+            case .clockedOut, .focusing, .onBreak, .awayUnclassified:
+                break
+            }
+            synchronizeWindows(at: date)
             return .changed
         }
 
@@ -1242,6 +1275,16 @@ final class AppModel: ObservableObject {
         at date: Date,
         bringReturnPanelToFront: Bool = false
     ) {
+        if returnPromptRequested == .lunch, state.phase != .onLunch {
+            returnPromptRequested = nil
+        }
+        if returnPromptRequested == .travel,
+           state.phase != .traveling,
+           state.phase != .offsiteMeeting
+        {
+            returnPromptRequested = nil
+        }
+
         let lunchPrompt = lunchPromptCandidate(at: date)
         if let lunchPrompt {
             overlayController.hide()
@@ -1271,6 +1314,32 @@ final class AppModel: ObservableObject {
                 secondaryTitle: "Not yet",
                 primaryAction: { [weak self] in self?.clockIn() },
                 secondaryAction: { [weak self] in self?.dismissClockInPrompt() }
+            )
+        } else if state.phase == .onLunch && returnPromptRequested == .lunch {
+            activityPromptPanelController.show(
+                key: "return-from-lunch",
+                title: "Welcome back",
+                detail: "End lunch to begin a fresh focus cycle, or keep lunch active if you’re not ready yet.",
+                symbolName: "figure.walk.arrival",
+                accent: NSColor(calibratedRed: 0.90, green: 0.45, blue: 0.16, alpha: 1),
+                primaryTitle: "Return to focus",
+                secondaryTitle: "Stay at lunch",
+                primaryAction: { [weak self] in self?.endLunch() },
+                secondaryAction: { [weak self] in self?.dismissReturnPrompt() }
+            )
+        } else if (state.phase == .traveling || state.phase == .offsiteMeeting)
+            && returnPromptRequested == .travel
+        {
+            activityPromptPanelController.show(
+                key: "return-from-travel",
+                title: "Welcome home",
+                detail: "Resume focus to end your away state and begin a fresh focus cycle.",
+                symbolName: "house.fill",
+                accent: NSColor(calibratedRed: 0.94, green: 0.48, blue: 0.12, alpha: 1),
+                primaryTitle: "Resume focus",
+                secondaryTitle: "Still away",
+                primaryAction: { [weak self] in self?.returnHome() },
+                secondaryAction: { [weak self] in self?.dismissReturnPrompt() }
             )
         } else {
             activityPromptPanelController.hide()
@@ -1361,6 +1430,14 @@ final class AppModel: ObservableObject {
     private func dismissClockInPrompt() {
         clockInPromptRequested = false
         clockedOutReturnDetector.reset()
+        let eventDate = Date()
+        now = eventDate
+        synchronizeWindows(at: eventDate)
+    }
+
+    private func dismissReturnPrompt() {
+        returnPromptRequested = nil
+        pausedReturnDetector.reset()
         let eventDate = Date()
         now = eventDate
         synchronizeWindows(at: eventDate)
