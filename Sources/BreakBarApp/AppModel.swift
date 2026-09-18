@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var busyBarEnabled: Bool
     @Published private(set) var busyBarAddress: String
     @Published private(set) var busyBarConnectionState: BusyBarConnectionState
+    private(set) var notificationAccessState: NotificationAccessState
 
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
@@ -35,6 +36,7 @@ final class AppModel: ObservableObject {
     private let repository: SessionRepository?
     private let overlayController = OverlayController()
     private let todayHistoryWindowController = TodayHistoryWindowController()
+    private let diagnosticsWindowController = DiagnosticsWindowController()
     private let breakReturnPanelController = BreakReturnPanelController()
     private let awayReturnPanelController = AwayReturnPanelController()
     private let activityPromptPanelController = ActivityPromptPanelController()
@@ -47,6 +49,10 @@ final class AppModel: ObservableObject {
     private var busyBarCleanupTask: Task<Void, Never>?
     private var busyBarGeneration = UUID()
     private var busyBarRenderRequest = UUID()
+    private var busyBarDeviceAPIVersion: String?
+    private var busyBarLastSuccessfulWriteAt: Date?
+    private var busyBarLastInputAt: Date?
+    private var lastObsidianExportAttemptSucceeded: Bool?
     private var observations = Set<AnyCancellable>()
 
     init() {
@@ -114,6 +120,7 @@ final class AppModel: ObservableObject {
                 ?? BusyBarAddress.defaultUSB
         ) ?? BusyBarAddress.defaultUSB
         busyBarConnectionState = initialBusyBarEnabled ? .connecting : .off
+        notificationAccessState = .unknown
         refreshLaunchAtLoginStatus()
 
         calendarMonitor.$schedulingConstraints
@@ -425,6 +432,67 @@ final class AppModel: ObservableObject {
         todayHistoryWindowController.show(model: self)
     }
 
+    func showDiagnostics() {
+        diagnosticsWindowController.show(
+            snapshot: makeDiagnosticsSnapshot()
+        ) { [weak self] in
+            self?.showDiagnostics()
+        }
+    }
+
+    private func makeDiagnosticsSnapshot() -> DiagnosticsSnapshot {
+        let databaseStatus: DiagnosticsDatabaseStatus
+        if let repository {
+            do {
+                databaseStatus = try repository.isHealthy() ? .healthy : .issueDetected
+            } catch {
+                databaseStatus = .issueDetected
+            }
+        } else {
+            databaseStatus = .unavailable
+        }
+
+        let exportStatus: DiagnosticsExportStatus
+        if obsidianDailyNotesFolderURL == nil {
+            exportStatus = .notConfigured
+        } else if let lastObsidianExportAttemptSucceeded {
+            exportStatus = lastObsidianExportAttemptSucceeded ? .succeeded : .failed
+        } else {
+            exportStatus = .notAttempted
+        }
+
+        let generatedAt = Date()
+        let nextConstraint = calendarMonitor.schedulingConstraints
+            .filter { $0.endAt > generatedAt }
+            .min { $0.startAt < $1.startAt }
+        let info = Bundle.main.infoDictionary
+
+        return DiagnosticsSnapshotBuilder.make(
+            from: DiagnosticsSnapshotInput(
+                generatedAt: generatedAt,
+                appVersion: info?["CFBundleShortVersionString"] as? String ?? "Development",
+                buildNumber: info?["CFBundleVersion"] as? String ?? "Local",
+                isDemoMode: isDemoMode,
+                state: state,
+                notificationAccess: notificationAccessState,
+                calendarAccess: calendarMonitor.accessState,
+                selectedCalendarCount: calendarMonitor.selectedCalendarIDs.count,
+                nextCalendarConstraint: nextConstraint,
+                callMonitorStatus: callActivityMonitor.status,
+                acceptedCallSignal: acceptedCallSignal,
+                databaseStatus: databaseStatus,
+                obsidianFolderURL: obsidianDailyNotesFolderURL,
+                exportStatus: exportStatus,
+                busyBarEnabled: busyBarEnabled,
+                busyBarAddress: busyBarAddress,
+                busyBarConnectionState: busyBarConnectionState,
+                busyBarDeviceAPIVersion: busyBarDeviceAPIVersion,
+                busyBarLastSuccessfulWriteAt: busyBarLastSuccessfulWriteAt,
+                busyBarLastInputAt: busyBarLastInputAt
+            )
+        )
+    }
+
     private func refreshTodayHistory(at date: Date) {
         guard let repository else {
             todayHistory = nil
@@ -474,12 +542,14 @@ final class AppModel: ObservableObject {
 
         let folderURL = selectedURL.standardizedFileURL
         obsidianDailyNotesFolderURL = folderURL
+        lastObsidianExportAttemptSucceeded = nil
         UserDefaults.standard.set(folderURL.path, forKey: Self.obsidianDailyNotesFolderKey)
         clearObsidianExportMessage()
     }
 
     func removeObsidianDailyNotesFolder() {
         obsidianDailyNotesFolderURL = nil
+        lastObsidianExportAttemptSucceeded = nil
         UserDefaults.standard.removeObject(forKey: Self.obsidianDailyNotesFolderKey)
         clearObsidianExportMessage()
     }
@@ -534,6 +604,7 @@ final class AppModel: ObservableObject {
             obsidianExportMessage = message
             obsidianExportMessageIsError = true
             lastMessage = "Obsidian export failed: \(message)"
+            lastObsidianExportAttemptSucceeded = false
             return
         }
 
@@ -563,22 +634,29 @@ final class AppModel: ObservableObject {
             obsidianExportMessage = message
             obsidianExportMessageIsError = true
             lastMessage = "Obsidian export failed: \(message)"
+            lastObsidianExportAttemptSucceeded = false
         } else if results.count == 1, let result = results.first {
             obsidianExportMessage = result.changed
                 ? "Exported \(result.noteURL.lastPathComponent)."
                 : "\(result.noteURL.lastPathComponent) is already up to date."
             obsidianExportMessageIsError = false
+            lastObsidianExportAttemptSucceeded = true
         } else {
             let changedCount = results.count(where: \.changed)
             obsidianExportMessage = changedCount == 0
                 ? "\(results.count) daily notes are already up to date."
                 : "Exported \(changedCount) of \(results.count) daily notes."
             obsidianExportMessageIsError = false
+            lastObsidianExportAttemptSucceeded = true
         }
     }
 
     func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    func setNotificationAccessState(_ state: NotificationAccessState) {
+        notificationAccessState = state
     }
 
     func setLaunchAtLogin(_ requested: Bool) {
@@ -931,6 +1009,9 @@ final class AppModel: ObservableObject {
     private func configureBusyBar() {
         busyBarGeneration = UUID()
         busyBarRenderRequest = UUID()
+        busyBarDeviceAPIVersion = nil
+        busyBarLastSuccessfulWriteAt = nil
+        busyBarLastInputAt = nil
         let generation = busyBarGeneration
         busyBarConnectionTask?.cancel()
         busyBarEventsTask?.cancel()
@@ -996,6 +1077,7 @@ final class AppModel: ObservableObject {
                     return
                 }
                 busyBarConnectionState = .connected
+                await refreshBusyBarDiagnostics(accessory, generation: generation)
                 renderBusyBar(presentation, revision: state.revision)
                 return
             } catch {
@@ -1039,6 +1121,7 @@ final class AppModel: ObservableObject {
 
             do {
                 try await accessory.render(presentation, revision: revision)
+                await self.refreshBusyBarDiagnostics(accessory, generation: generation)
             } catch {
                 guard self.busyBarEnabled,
                       generation == self.busyBarGeneration,
@@ -1059,6 +1142,12 @@ final class AppModel: ObservableObject {
             return
         }
 
+        if let accessory = busyBarAccessory {
+            Task { [weak self] in
+                await self?.refreshBusyBarDiagnostics(accessory, generation: generation)
+            }
+        }
+
         switch BusyBarEventRouting.command(for: event, state: state) {
         case .startBreak:
             startBreak()
@@ -1069,6 +1158,17 @@ final class AppModel: ObservableObject {
         default:
             break
         }
+    }
+
+    private func refreshBusyBarDiagnostics(
+        _ accessory: BusyBarAccessory,
+        generation: UUID
+    ) async {
+        let diagnostics = await accessory.diagnostics()
+        guard generation == busyBarGeneration, accessory === busyBarAccessory else { return }
+        busyBarDeviceAPIVersion = diagnostics.deviceAPIVersion
+        busyBarLastSuccessfulWriteAt = diagnostics.lastSuccessfulWriteAt
+        busyBarLastInputAt = diagnostics.lastInputAt
     }
 
     @discardableResult

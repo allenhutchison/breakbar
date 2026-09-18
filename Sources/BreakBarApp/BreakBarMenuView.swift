@@ -114,6 +114,14 @@ struct BreakBarMenuView: View {
                     .foregroundStyle(.secondary)
                 Spacer()
                 Button {
+                    model.showDiagnostics()
+                } label: {
+                    Image(systemName: "info.circle")
+                }
+                .buttonStyle(.plain)
+                .help("Diagnostics")
+                .accessibilityLabel("Diagnostics")
+                Button {
                     model.showTodayHistory()
                 } label: {
                     Image(systemName: "chart.bar.xaxis")

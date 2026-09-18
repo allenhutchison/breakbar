@@ -163,6 +163,13 @@ public final class SessionRepository {
         }
     }
 
+    public func isHealthy() throws -> Bool {
+        let result: String? = try queryOne("PRAGMA quick_check") { statement in
+            String(cString: sqlite3_column_text(statement, 0))
+        }
+        return result == "ok"
+    }
+
     public func commitTransition(
         from previous: BreakBarState,
         to next: BreakBarState,

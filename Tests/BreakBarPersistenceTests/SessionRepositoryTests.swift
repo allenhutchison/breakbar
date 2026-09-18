@@ -12,6 +12,12 @@ final class SessionRepositoryTests: XCTestCase {
         minimumBreakDuration: 20
     )
 
+    func testHealthCheckReportsNewDatabaseAsHealthy() throws {
+        try withRepository { repository, _ in
+            XCTAssertTrue(try repository.isHealthy())
+        }
+    }
+
     func testFullCycleProducesClosedSessionAndIntervalLedger() throws {
         try withRepository { repository, _ in
             var engine = BreakBarEngine(policy: policy)

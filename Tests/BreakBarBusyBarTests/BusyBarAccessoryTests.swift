@@ -4,6 +4,52 @@ import XCTest
 @testable import BreakBarBusyBar
 
 final class BusyBarAccessoryTests: XCTestCase {
+    func testDiagnosticsRecordCompatibilityDisplayWritesAndInput() async throws {
+        let device = RecordingBusyBarDevice()
+        let stateStream = ControlledBusyBarStateStream()
+        let writeDate = Date(timeIntervalSinceReferenceDate: 1_000_000)
+        let inputDate = writeDate.addingTimeInterval(5)
+        let clock = LockedTestClock(now: writeDate)
+        let accessory = BusyBarAccessory(
+            device: device,
+            stateStream: stateStream,
+            now: clock.current
+        )
+        let state = BreakBarState(
+            phase: .focusing,
+            phaseStartedAt: writeDate,
+            nominalFocusDueAt: writeDate.addingTimeInterval(55 * 60),
+            focusDueAt: writeDate.addingTimeInterval(55 * 60),
+            revision: 4
+        )
+
+        try await accessory.connect()
+        try await accessory.render(
+            BreakBarPresentation(state: state, policy: .standard, now: writeDate),
+            revision: state.revision
+        )
+        var diagnostics = await accessory.diagnostics()
+        XCTAssertEqual(diagnostics.deviceAPIVersion, "27.5.0")
+        XCTAssertEqual(diagnostics.lastSuccessfulWriteAt, writeDate)
+        XCTAssertNil(diagnostics.lastInputAt)
+
+        let action = Task { () -> AccessoryEvent? in
+            for await event in accessory.events() {
+                if case .startBreak = event { return event }
+            }
+            return nil
+        }
+        clock.set(inputDate)
+        stateStream.yield(
+            BusyBarStateMessage(inputEvents: [.button(.start, action: .press)])
+        )
+        _ = await action.value
+
+        diagnostics = await accessory.diagnostics()
+        XCTAssertEqual(diagnostics.lastInputAt, inputDate)
+        await accessory.disconnect()
+    }
+
     func testConnectsAndRendersSelfClearingFocusStatus() async throws {
         let device = RecordingBusyBarDevice()
         let stateStream = ControlledBusyBarStateStream()
@@ -148,6 +194,27 @@ final class BusyBarAccessoryTests: XCTestCase {
         }
         let finalOperations = await device.recordedOperations()
         XCTAssertEqual(finalOperations, [.drawStarted, .drawFinished, .clear])
+    }
+}
+
+private final class LockedTestClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var now: Date
+
+    init(now: Date) {
+        self.now = now
+    }
+
+    func current() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        return now
+    }
+
+    func set(_ date: Date) {
+        lock.lock()
+        now = date
+        lock.unlock()
     }
 }
 
