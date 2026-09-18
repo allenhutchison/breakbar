@@ -1,17 +1,16 @@
-# BreakBar 0.6.0
+# BreakBar 0.7.0
 
-BreakBar 0.6.0 adds optional BUSY Bar hardware support and makes break enforcement more flexible.
+BreakBar 0.7.0 makes returning to focus easier and adds privacy-safe diagnostics for support.
 
 ## Highlights
 
-- Connect an optional BUSY Bar to mirror the live timer and use its START button to begin or end breaks.
-- Defer a required break for five minutes without losing the current focus interval; deferrals survive restarts and calendar updates.
-- Launch BreakBar quietly in the menu bar, opening Settings only when requested.
-- Improve BUSY Bar connection recovery, display cleanup, input safety, and API compatibility handling.
+- Open Diagnostics from the menu-bar popover to inspect timer, permissions, calendar, call detection, storage, export, and optional BUSY Bar health.
+- Copy a privacy-redacted diagnostics report for troubleshooting without exposing sensitive identifiers, paths, addresses, credentials, or raw errors.
+- Get a quick prompt after returning from lunch or a completed travel or offsite block, with explicit choices to resume focus or remain away.
 
 ## Privacy
 
-BUSY Bar communication stays between the Mac and the configured local device. This release adds no cloud service or collection of personal data.
+Diagnostics omit calendar titles and identifiers, call application identifiers, file paths, device addresses, credentials, and raw errors. This release adds no cloud service or collection of personal data.
 
 ## Requirements
 
