@@ -1,35 +1,39 @@
 import Foundation
 
-public struct ClockedOutReturnDetector: Sendable {
-    private var observedIdleWhileClockedOut = false
+public struct IdleReturnDetector: Sendable {
+    private var observedTrackedIdle = false
 
     public init() {}
 
     public mutating func reset() {
-        observedIdleWhileClockedOut = false
+        observedTrackedIdle = false
     }
 
     public mutating func update(
-        isClockedOut: Bool,
+        isTracking: Bool,
+        canPrompt: Bool = true,
         idleDuration: TimeInterval,
         idleThreshold: TimeInterval,
         returnThreshold: TimeInterval = 2
     ) -> Bool {
-        guard isClockedOut else {
-            observedIdleWhileClockedOut = false
+        guard isTracking else {
+            observedTrackedIdle = false
             return false
         }
         guard idleDuration.isFinite, idleDuration >= 0 else { return false }
 
         if idleDuration >= idleThreshold {
-            observedIdleWhileClockedOut = true
+            observedTrackedIdle = true
             return false
         }
 
-        guard observedIdleWhileClockedOut, idleDuration < returnThreshold else {
+        guard observedTrackedIdle,
+              canPrompt,
+              idleDuration < returnThreshold
+        else {
             return false
         }
-        observedIdleWhileClockedOut = false
+        observedTrackedIdle = false
         return true
     }
 }
