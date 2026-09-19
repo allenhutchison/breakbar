@@ -5,6 +5,8 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var model: AppModel
     let checkForUpdates: () -> Void
+    let requestNotificationAccess: () -> Void
+    let runOnboarding: () -> Void
 
     var body: some View {
         Form {
@@ -74,6 +76,21 @@ struct SettingsView: View {
                             .buttonStyle(.link)
                     }
                 }
+
+                LabeledContent(
+                    "Notifications",
+                    value: notificationAccessDescription
+                )
+
+                if model.notificationAccessState == .notDetermined {
+                    Button("Enable Notifications", action: requestNotificationAccess)
+                } else if model.notificationAccessState == .disabled {
+                    Text("Enable BreakBar in System Settings → Notifications to receive warning banners.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Button("Run Setup Again…", action: runOnboarding)
             }
 
             CalendarSettingsSection(monitor: model.calendarMonitor)
@@ -97,6 +114,15 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .padding()
         .frame(width: 520, height: 720)
+    }
+
+    private var notificationAccessDescription: String {
+        switch model.notificationAccessState {
+        case .notDetermined: "Not requested"
+        case .enabled: "Enabled"
+        case .disabled: "Disabled"
+        case .unknown: "Status unavailable"
+        }
     }
 }
 

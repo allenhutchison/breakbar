@@ -7,7 +7,9 @@ final class SettingsWindowController {
 
     func show(
         model: AppModel,
-        checkForUpdates: @escaping () -> Void
+        checkForUpdates: @escaping () -> Void,
+        requestNotificationAccess: @escaping () -> Void,
+        runOnboarding: @escaping () -> Void
     ) {
         if let windowController {
             windowController.showWindow(nil)
@@ -27,7 +29,9 @@ final class SettingsWindowController {
         window.contentViewController = NSHostingController(
             rootView: SettingsView(
                 model: model,
-                checkForUpdates: checkForUpdates
+                checkForUpdates: checkForUpdates,
+                requestNotificationAccess: requestNotificationAccess,
+                runOnboarding: runOnboarding
             )
         )
         window.center()

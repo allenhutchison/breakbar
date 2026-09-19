@@ -31,7 +31,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var busyBarEnabled: Bool
     @Published private(set) var busyBarAddress: String
     @Published private(set) var busyBarConnectionState: BusyBarConnectionState
-    private(set) var notificationAccessState: NotificationAccessState
+    @Published private(set) var notificationAccessState: NotificationAccessState
 
     let isDemoMode: Bool
     let calendarMonitor = CalendarMonitor()
