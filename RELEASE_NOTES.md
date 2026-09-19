@@ -1,16 +1,17 @@
-# BreakBar 0.7.0
+# BreakBar 0.8.0
 
-BreakBar 0.7.0 makes returning to focus easier and adds privacy-safe diagnostics for support.
+BreakBar 0.8.0 adds a guided first-launch setup and keeps calendar-aware break plans within the maximum seated limit.
 
 ## Highlights
 
-- Open Diagnostics from the menu-bar popover to inspect timer, permissions, calendar, call detection, storage, export, and optional BUSY Bar health.
-- Copy a privacy-redacted diagnostics report for troubleshooting without exposing sensitive identifiers, paths, addresses, credentials, or raw errors.
-- Get a quick prompt after returning from lunch or a completed travel or offsite block, with explicit choices to resume focus or remain away.
+- Follow a six-step setup assistant that explains BreakBar’s focus, warning, and break loop before the first clock-in.
+- Configure optional notifications, Calendar access, live-meeting behavior, Obsidian daily notes, and launch at login without automatic permission prompts.
+- Revisit setup from Settings, with clearer explanations of what the Obsidian integration writes and when exports occur.
+- Keep calendar-adjusted breaks within the 75-minute maximum seated limit unless an active meeting temporarily suppresses enforcement.
 
 ## Privacy
 
-Diagnostics omit calendar titles and identifiers, call application identifiers, file paths, device addresses, credentials, and raw errors. This release adds no cloud service or collection of personal data.
+Every integration remains optional. BreakBar requests notification or Calendar access only after an explicit setup action, stores work history locally, and limits Obsidian updates to its marked section. This release adds no cloud service or collection of personal data.
 
 ## Requirements
 
