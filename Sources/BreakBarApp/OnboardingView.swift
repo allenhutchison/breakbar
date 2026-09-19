@@ -2,10 +2,24 @@ import SwiftUI
 
 struct OnboardingView: View {
     @ObservedObject var model: AppModel
+    @ObservedObject private var calendarMonitor: CalendarMonitor
+    @ObservedObject private var callActivityMonitor: CallActivityMonitor
     let requestNotificationAccess: () -> Void
     let finish: () -> Void
 
     @State private var progress = OnboardingProgress()
+
+    init(
+        model: AppModel,
+        requestNotificationAccess: @escaping () -> Void,
+        finish: @escaping () -> Void
+    ) {
+        self.model = model
+        _calendarMonitor = ObservedObject(wrappedValue: model.calendarMonitor)
+        _callActivityMonitor = ObservedObject(wrappedValue: model.callActivityMonitor)
+        self.requestNotificationAccess = requestNotificationAccess
+        self.finish = finish
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -150,39 +164,39 @@ struct OnboardingView: View {
                     HStack {
                         LabeledContent(
                             "Calendar access",
-                            value: model.calendarMonitor.accessState.description
+                            value: calendarMonitor.accessState.description
                         )
                         Spacer()
-                        if model.calendarMonitor.accessState == .notDetermined {
+                        if calendarMonitor.accessState == .notDetermined {
                             Button(
                                 "Connect Calendar",
-                                action: model.calendarMonitor.requestAccess
+                                action: calendarMonitor.requestAccess
                             )
                             .buttonStyle(.borderedProminent)
                         }
                     }
 
-                    if model.calendarMonitor.accessState == .fullAccess {
+                    if calendarMonitor.accessState == .fullAccess {
                         Divider()
                         Text("Included calendars")
                             .font(.headline)
 
-                        if model.calendarMonitor.calendars.isEmpty {
+                        if calendarMonitor.calendars.isEmpty {
                             Text("No event calendars are available.")
                                 .foregroundStyle(.secondary)
                         } else {
                             ScrollView {
                                 LazyVStack(alignment: .leading, spacing: 10) {
-                                    ForEach(model.calendarMonitor.calendars) { calendar in
+                                    ForEach(calendarMonitor.calendars) { calendar in
                                         Toggle(
                                             isOn: Binding(
                                                 get: {
-                                                    model.calendarMonitor.isCalendarSelected(
+                                                    calendarMonitor.isCalendarSelected(
                                                         calendar.id
                                                     )
                                                 },
                                                 set: {
-                                                    model.calendarMonitor.setCalendar(
+                                                    calendarMonitor.setCalendar(
                                                         calendar.id,
                                                         included: $0
                                                     )
@@ -201,13 +215,13 @@ struct OnboardingView: View {
                             }
                             .frame(maxHeight: 180)
                         }
-                    } else if model.calendarMonitor.accessState != .notDetermined {
+                    } else if calendarMonitor.accessState != .notDetermined {
                         Text("BreakBar will use its normal timer until full Calendar access is available.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
 
-                    if let message = model.calendarMonitor.message {
+                    if let message = calendarMonitor.message {
                         Text(message)
                             .font(.callout)
                             .foregroundStyle(.red)
@@ -283,7 +297,7 @@ struct OnboardingView: View {
 
                         LabeledContent(
                             "Detection",
-                            value: model.callActivityMonitor.status.description
+                            value: callActivityMonitor.status.description
                         )
                         Toggle(
                             "Treat browser microphone use as a meeting",
@@ -344,7 +358,7 @@ struct OnboardingView: View {
                     OnboardingSummaryRow(
                         symbol: "calendar",
                         title: "Calendar",
-                        value: model.calendarMonitor.accessState.description
+                        value: calendarMonitor.accessState.description
                     )
                     Divider()
                     OnboardingSummaryRow(
