@@ -62,7 +62,13 @@ final class BreakBarEngineTests: XCTestCase {
     }
 
     func testCalendarRefreshPreservesActiveBreakDeferral() {
-        var engine = BreakBarEngine(policy: policy)
+        let boundedPolicy = BreakPolicy(
+            focusDuration: 60,
+            warningDuration: 15,
+            minimumBreakDuration: 20,
+            maximumSeatedDuration: 90
+        )
+        var engine = BreakBarEngine(policy: boundedPolicy)
         _ = engine.handle(.clockIn, at: origin)
         _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
         _ = engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60))
@@ -239,6 +245,50 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.nominalFocusDueAt, origin.addingTimeInterval(60))
         XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(50))
         XCTAssertEqual(engine.state.breakPlanReason, .pulledBeforeMeeting)
+    }
+
+    func testInfeasibleMeetingDeferralIsCappedAtMaximumSeatedDeadline() {
+        let boundedPolicy = BreakPolicy(
+            focusDuration: 60,
+            warningDuration: 15,
+            minimumBreakDuration: 20,
+            maximumSeatedDuration: 90
+        )
+        var engine = BreakBarEngine(policy: boundedPolicy)
+        _ = engine.handle(.clockIn, at: origin)
+        let meeting = BreakCalendarConstraint(
+            id: "meeting",
+            startAt: origin.addingTimeInterval(70),
+            endAt: origin.addingTimeInterval(120)
+        )
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([meeting]),
+                at: origin.addingTimeInterval(36)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(90))
+        XCTAssertEqual(engine.state.breakPlanReason, .maximumSeatedLimit)
+
+        XCTAssertEqual(
+            engine.handle(
+                .updateCalendarConstraints([meeting]),
+                at: origin.addingTimeInterval(70)
+            ),
+            .changed
+        )
+        XCTAssertEqual(engine.state.enforcement, .none)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(90))
+        XCTAssertEqual(engine.state.breakPlanReason, .maximumSeatedLimit)
+
+        XCTAssertEqual(
+            engine.handle(.tick, at: origin.addingTimeInterval(120)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(135))
+        XCTAssertEqual(engine.state.breakPlanReason, .postMeetingWarning)
     }
 
     func testActiveMeetingSuppressesVisibleEnforcement() {

@@ -7,7 +7,7 @@ final class BreakSchedulePlannerTests: XCTestCase {
         focusDuration: 60,
         warningDuration: 15,
         minimumBreakDuration: 20,
-        maximumSeatedDuration: 90
+        maximumSeatedDuration: 180
     )
 
     func testPullsBreakForwardWhenWarningAndMinimumBreakFit() {
@@ -54,6 +54,29 @@ final class BreakSchedulePlannerTests: XCTestCase {
 
         XCTAssertEqual(plan.plannedBreakAt, date(135))
         XCTAssertEqual(plan.reason, .deferredThroughMeeting)
+    }
+
+    func testCapsInfeasibleMeetingDeferralAtMaximumSeatedDuration() {
+        let boundedPolicy = BreakPolicy(
+            focusDuration: 60,
+            warningDuration: 15,
+            minimumBreakDuration: 20,
+            maximumSeatedDuration: 90
+        )
+        let meeting = constraint(start: 70, end: 120)
+
+        let plan = BreakSchedulePlanner.plan(
+            cycleStartedAt: origin,
+            now: date(36),
+            policy: boundedPolicy,
+            constraints: [meeting]
+        )
+
+        XCTAssertEqual(plan.nominalBreakAt, date(60))
+        XCTAssertEqual(plan.plannedBreakAt, date(90))
+        XCTAssertEqual(plan.reason, .maximumSeatedLimit)
+        XCTAssertEqual(plan.meetingStartsAt, meeting.startAt)
+        XCTAssertEqual(plan.meetingEndsAt, meeting.endAt)
     }
 
     func testMeetingAfterMinimumBreakDoesNotDelayNominalBreak() {

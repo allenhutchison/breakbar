@@ -257,6 +257,7 @@ enum DiagnosticsSnapshotBuilder {
         case .nominal: "Nominal"
         case .pulledBeforeMeeting: "Pulled before meeting"
         case .deferredThroughMeeting: "Deferred through meeting"
+        case .maximumSeatedLimit: "Maximum seated limit"
         case .postMeetingWarning: "Post-meeting warning"
         case .userDeferred: "User deferred"
         case nil: "None"

@@ -136,6 +136,28 @@ final class BreakBarPresentationTests: XCTestCase {
         XCTAssertTrue(presentation.detail.contains("moved before your next meeting"))
     }
 
+    func testMaximumSeatedLimitExplainsCappedPlan() {
+        let state = BreakBarState(
+            phase: .focusing,
+            phaseStartedAt: origin,
+            nominalFocusDueAt: origin.addingTimeInterval(60),
+            focusDueAt: origin.addingTimeInterval(90),
+            breakPlanReason: .maximumSeatedLimit,
+            revision: 2
+        )
+
+        let presentation = BreakBarPresentation(
+            state: state,
+            policy: policy,
+            now: origin
+        )
+
+        XCTAssertEqual(
+            presentation.detail,
+            "Break capped at your maximum seated time: 1 min 30 sec remaining."
+        )
+    }
+
     func testLiveMeetingOverrunCountsUpFromScheduledEnd() {
         let state = BreakBarState(
             phase: .focusing,
