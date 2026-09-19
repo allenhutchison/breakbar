@@ -21,6 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private var statusItem: NSStatusItem?
     private let popover = NSPopover()
     private let settingsWindowController = SettingsWindowController()
+    private let onboardingWindowController = OnboardingWindowController()
     private var modelObservation: AnyCancellable?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -32,17 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
-            if let error {
-                NSLog("BreakBar could not request notification permission: %@", error.localizedDescription)
-            } else if !granted {
-                NSLog("BreakBar notifications are disabled; warning sounds will still play.")
-            }
-            Task { @MainActor [weak self] in
-                self?.refreshNotificationAccessState()
-            }
-        }
         refreshNotificationAccessState()
+
+        if !model.isDemoMode && OnboardingPreferences.shouldPresent() {
+            showOnboarding()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -68,8 +63,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     func showSettings() {
         settingsWindowController.show(
             model: model,
-            checkForUpdates: checkForUpdates
+            checkForUpdates: checkForUpdates,
+            requestNotificationAccess: requestNotificationAccess,
+            runOnboarding: showOnboarding
         )
+    }
+
+    func showOnboarding() {
+        onboardingWindowController.show(
+            model: model,
+            requestNotificationAccess: requestNotificationAccess
+        )
+    }
+
+    func requestNotificationAccess() {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, error in
+            if let error {
+                NSLog("BreakBar could not request notification permission: %@", error.localizedDescription)
+            } else if !granted {
+                NSLog("BreakBar notifications are disabled; warning sounds will still play.")
+            }
+            Task { @MainActor [weak self] in
+                self?.refreshNotificationAccessState()
+            }
+        }
     }
 
     private func refreshNotificationAccessState() {

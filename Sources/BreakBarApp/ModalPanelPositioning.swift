@@ -2,14 +2,14 @@ import AppKit
 
 @MainActor
 enum ModalPanelPositioning {
-    static func center(_ panel: NSPanel, on targetScreen: NSScreen? = nil) {
+    static func center(_ window: NSWindow, on targetScreen: NSScreen? = nil) {
         guard let screen = targetScreen ?? activeScreen() else {
-            panel.center()
+            window.center()
             return
         }
 
         let visibleFrame = screen.visibleFrame
-        panel.setFrameOrigin(centeredOrigin(size: panel.frame.size, in: visibleFrame))
+        window.setFrameOrigin(centeredOrigin(size: window.frame.size, in: visibleFrame))
     }
 
     nonisolated static func centeredOrigin(size: NSSize, in visibleFrame: NSRect) -> NSPoint {
