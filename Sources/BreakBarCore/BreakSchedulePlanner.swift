@@ -61,6 +61,7 @@ public enum BreakSchedulePlanner {
         constraints: [BreakCalendarConstraint]
     ) -> BreakSchedulePlan {
         let nominalBreakAt = cycleStartedAt.addingTimeInterval(policy.focusDuration)
+        let maximumBreakAt = cycleStartedAt.addingTimeInterval(policy.maximumSeatedDuration)
         let meetings = constraints
             .filter { $0.kind == .meeting && $0.endAt > now && $0.endAt > $0.startAt }
             .sorted { $0.startAt < $1.startAt }
@@ -69,14 +70,17 @@ public enum BreakSchedulePlanner {
             $0.startAt <= now && now < $0.endAt
         }) {
             let breakIsDue = now >= nominalBreakAt
-            return BreakSchedulePlan(
-                nominalBreakAt: nominalBreakAt,
-                plannedBreakAt: breakIsDue
-                    ? activeMeeting.endAt.addingTimeInterval(policy.warningDuration)
-                    : nominalBreakAt,
-                reason: breakIsDue ? .deferredThroughMeeting : .nominal,
-                meetingStartsAt: activeMeeting.startAt,
-                meetingEndsAt: activeMeeting.endAt
+            return cappedAtMaximumSeatedDuration(
+                BreakSchedulePlan(
+                    nominalBreakAt: nominalBreakAt,
+                    plannedBreakAt: breakIsDue
+                        ? activeMeeting.endAt.addingTimeInterval(policy.warningDuration)
+                        : nominalBreakAt,
+                    reason: breakIsDue ? .deferredThroughMeeting : .nominal,
+                    meetingStartsAt: activeMeeting.startAt,
+                    meetingEndsAt: activeMeeting.endAt
+                ),
+                maximumBreakAt: maximumBreakAt
             )
         }
 
@@ -100,30 +104,53 @@ public enum BreakSchedulePlanner {
                 }
 
             if warningAndBreakFit {
-                return BreakSchedulePlan(
-                    nominalBreakAt: nominalBreakAt,
-                    plannedBreakAt: preMeetingBreakAt,
-                    reason: .pulledBeforeMeeting,
-                    meetingStartsAt: meeting.startAt,
-                    meetingEndsAt: meeting.endAt
+                return cappedAtMaximumSeatedDuration(
+                    BreakSchedulePlan(
+                        nominalBreakAt: nominalBreakAt,
+                        plannedBreakAt: preMeetingBreakAt,
+                        reason: .pulledBeforeMeeting,
+                        meetingStartsAt: meeting.startAt,
+                        meetingEndsAt: meeting.endAt
+                    ),
+                    maximumBreakAt: maximumBreakAt
                 )
             }
 
-            return BreakSchedulePlan(
-                nominalBreakAt: nominalBreakAt,
-                plannedBreakAt: meeting.endAt.addingTimeInterval(policy.warningDuration),
-                reason: .deferredThroughMeeting,
-                meetingStartsAt: meeting.startAt,
-                meetingEndsAt: meeting.endAt
+            return cappedAtMaximumSeatedDuration(
+                BreakSchedulePlan(
+                    nominalBreakAt: nominalBreakAt,
+                    plannedBreakAt: meeting.endAt.addingTimeInterval(policy.warningDuration),
+                    reason: .deferredThroughMeeting,
+                    meetingStartsAt: meeting.startAt,
+                    meetingEndsAt: meeting.endAt
+                ),
+                maximumBreakAt: maximumBreakAt
             )
         }
 
+        return cappedAtMaximumSeatedDuration(
+            BreakSchedulePlan(
+                nominalBreakAt: nominalBreakAt,
+                plannedBreakAt: nominalBreakAt,
+                reason: .nominal,
+                meetingStartsAt: nil,
+                meetingEndsAt: nil
+            ),
+            maximumBreakAt: maximumBreakAt
+        )
+    }
+
+    private static func cappedAtMaximumSeatedDuration(
+        _ plan: BreakSchedulePlan,
+        maximumBreakAt: Date
+    ) -> BreakSchedulePlan {
+        guard plan.plannedBreakAt > maximumBreakAt else { return plan }
         return BreakSchedulePlan(
-            nominalBreakAt: nominalBreakAt,
-            plannedBreakAt: nominalBreakAt,
-            reason: .nominal,
-            meetingStartsAt: nil,
-            meetingEndsAt: nil
+            nominalBreakAt: plan.nominalBreakAt,
+            plannedBreakAt: maximumBreakAt,
+            reason: .maximumSeatedLimit,
+            meetingStartsAt: plan.meetingStartsAt,
+            meetingEndsAt: plan.meetingEndsAt
         )
     }
 

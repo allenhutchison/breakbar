@@ -157,6 +157,8 @@ public struct BreakBarPresentation: Equatable, Sendable {
                     detail = "Your meeting ended. Break begins in \(Self.spoken(remaining))."
                 } else if state.breakPlanReason == .userDeferred {
                     detail = "Break delayed. Break begins in \(Self.spoken(remaining))."
+                } else if state.breakPlanReason == .maximumSeatedLimit {
+                    detail = "Maximum seated limit. Break begins in \(Self.spoken(remaining))."
                 } else {
                     detail = "Your break begins in \(Self.spoken(remaining))."
                 }
@@ -166,6 +168,8 @@ public struct BreakBarPresentation: Equatable, Sendable {
                     detail = "Break moved before your next meeting: \(Self.spoken(remaining)) remaining."
                 case .deferredThroughMeeting:
                     detail = "Break follows your meeting with a fresh warning."
+                case .maximumSeatedLimit:
+                    detail = "Break capped at your maximum seated time: \(Self.spoken(remaining)) remaining."
                 case .postMeetingWarning:
                     detail = "Your meeting ended. Break begins in \(Self.spoken(remaining))."
                 case .userDeferred:

@@ -58,6 +58,7 @@ public enum BreakPlanReason: String, Codable, Equatable, Sendable {
     case nominal
     case pulledBeforeMeeting
     case deferredThroughMeeting
+    case maximumSeatedLimit
     case postMeetingWarning
     case userDeferred
 }
