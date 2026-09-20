@@ -114,6 +114,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .accessibilityIdentifier("settings.form")
         .padding()
         .frame(width: 520, height: 720)
     }
@@ -137,6 +138,7 @@ private struct PrivacyDataSettingsSection: View {
             Text("BreakBar keeps timer history and settings on this Mac. It has no analytics or cloud account.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("settings.privacy.explanation")
 
             LabeledContent("Work history", value: "Local SQLite database")
             LabeledContent("Calendar", value: "Read only; event titles are not stored")
@@ -151,10 +153,12 @@ private struct PrivacyDataSettingsSection: View {
             HStack {
                 Button("Export Complete History…", action: model.exportCompleteHistory)
                     .disabled(!model.canExportCompleteHistory)
+                    .accessibilityIdentifier("settings.privacy.export-history")
                 Button("Delete All Local History…", role: .destructive) {
                     isConfirmingDeletion = true
                 }
                 .disabled(!model.canDeleteAllLocalHistory)
+                .accessibilityIdentifier("settings.privacy.delete-history")
             }
 
             if model.state.phase != .clockedOut {
@@ -172,6 +176,9 @@ private struct PrivacyDataSettingsSection: View {
                 )
                 .font(.caption)
                 .foregroundStyle(model.privacyDataMessageIsError ? Color.red : Color.secondary)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(message)
+                .accessibilityIdentifier("settings.privacy.status")
             }
         }
         .alert("Delete all local history?", isPresented: $isConfirmingDeletion) {

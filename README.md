@@ -58,6 +58,17 @@ make test
 make build
 ```
 
+Run the macOS Settings and privacy acceptance smoke test in an isolated app
+bundle and temporary database:
+
+```sh
+make test-ui
+```
+
+The UI-test profile uses the distinct `app.breakbar.mac.uitest` bundle identity,
+does not start live integrations or update checks, and never reads normal or
+demo history.
+
 With a BUSY Bar connected over USB, its opt-in acceptance test verifies the
 real API version, WebSocket state stream, forwarded input loopback, and physical
 buttons, selector, and wheel:

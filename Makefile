@@ -16,6 +16,9 @@ APP_FRAMEWORKS = $(APP_CONTENTS)/Frameworks
 APP_RESOURCES = $(APP_CONTENTS)/Resources
 APP_ICON_SOURCE = $(CURDIR)/Support/AppIcon.png
 APP_ICON = $(CURDIR)/.build/AppIcon.icns
+BUNDLE_IDENTIFIER ?= app.breakbar.mac
+BUNDLE_DISPLAY_NAME ?= BreakBar
+UI_TEST_APP_BUNDLE = $(CURDIR)/.build/BreakBarUITest.app
 SPARKLE_FRAMEWORK = $(APP_FRAMEWORKS)/Sparkle.framework
 SPARKLE_FRAMEWORK_SOURCE = $(CURDIR)/.build/out/Products/$(PRODUCTS_CONFIGURATION)/Sparkle.framework
 SPARKLE_LICENSE_SOURCE = $(CURDIR)/.build/artifacts/sparkle/Sparkle/LICENSE
@@ -23,7 +26,7 @@ SWIFT_PROTOBUF_LICENSE_SOURCE = $(CURDIR)/.build/checkouts/swift-protobuf/LICENS
 BUSY_PROTOBUF_LICENSE_SOURCE = $(CURDIR)/Support/ThirdPartyLicenses/BUSYProtobuf.md
 SIGNING_IDENTITY ?= -
 
-.PHONY: build bundle release-bundle test test-busybar-hardware run demo
+.PHONY: build bundle release-bundle test test-ui test-busybar-hardware run demo
 
 build:
 	$(SWIFT_ENV) swift build $(SWIFT_PATHS) --configuration $(CONFIGURATION)
@@ -41,7 +44,10 @@ bundle: build $(APP_ICON)
 	cp $(BUSY_PROTOBUF_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/BUSYProtobuf.txt
 	cp $(APP_ICON) $(APP_RESOURCES)/AppIcon.icns
 	cp $(CURDIR)/Support/Info.plist $(APP_CONTENTS)/Info.plist
-	codesign --force --sign - --identifier app.breakbar.mac \
+	plutil -replace CFBundleIdentifier -string "$(BUNDLE_IDENTIFIER)" $(APP_CONTENTS)/Info.plist
+	plutil -replace CFBundleDisplayName -string "$(BUNDLE_DISPLAY_NAME)" $(APP_CONTENTS)/Info.plist
+	plutil -replace CFBundleName -string "$(BUNDLE_DISPLAY_NAME)" $(APP_CONTENTS)/Info.plist
+	codesign --force --sign - --identifier "$(BUNDLE_IDENTIFIER)" \
 		--entitlements $(CURDIR)/Support/BreakBar.entitlements $(APP_BUNDLE)
 
 release-bundle:
@@ -66,12 +72,24 @@ release-bundle:
 	codesign --force --timestamp --options runtime \
 		--generate-entitlement-der \
 		--sign "$(SIGNING_IDENTITY)" \
-		--identifier app.breakbar.mac \
+		--identifier "$(BUNDLE_IDENTIFIER)" \
 		--entitlements $(CURDIR)/Support/BreakBar.entitlements $(APP_BUNDLE)
 	codesign --verify --deep --strict --verbose=2 $(APP_BUNDLE)
 
 test:
 	$(SWIFT_ENV) swift test $(SWIFT_PATHS)
+
+test-ui:
+	$(MAKE) bundle \
+		APP_BUNDLE=$(UI_TEST_APP_BUNDLE) \
+		BUNDLE_IDENTIFIER=app.breakbar.mac.uitest \
+		BUNDLE_DISPLAY_NAME="BreakBar UI Tests"
+	DEVELOPER_DIR=$(DEVELOPER_DIR) xcodebuild -quiet test \
+		-project $(CURDIR)/Tests/BreakBarUITests/BreakBarUITests.xcodeproj \
+		-scheme BreakBarUITests \
+		-destination 'platform=macOS' \
+		-derivedDataPath $(CURDIR)/.build/ui-test-derived \
+		-parallel-testing-enabled NO
 
 test-busybar-hardware:
 	BREAKBAR_BUSYBAR_ACCEPTANCE=1 $(SWIFT_ENV) swift test $(SWIFT_PATHS) \
