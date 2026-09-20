@@ -104,6 +104,8 @@ struct SettingsView: View {
 
             BusyBarSettingsSection(model: model)
 
+            PrivacyDataSettingsSection(model: model)
+
             Section("Updates") {
                 Button("Check for Updates…", action: checkForUpdates)
                 Text("BreakBar checks for updates automatically and installs downloaded updates when the app is ready to relaunch.")
@@ -122,6 +124,64 @@ struct SettingsView: View {
         case .enabled: "Enabled"
         case .disabled: "Disabled"
         case .unknown: "Status unavailable"
+        }
+    }
+}
+
+private struct PrivacyDataSettingsSection: View {
+    @ObservedObject var model: AppModel
+    @State private var isConfirmingDeletion = false
+
+    var body: some View {
+        Section("Privacy & Data") {
+            Text("BreakBar keeps timer history and settings on this Mac. It has no analytics or cloud account.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            LabeledContent("Work history", value: "Local SQLite database")
+            LabeledContent("Calendar", value: "Read only; event titles are not stored")
+            LabeledContent("Live meetings", value: "Activity only; audio is never recorded")
+            LabeledContent(
+                "Obsidian",
+                value: model.obsidianDailyNotesFolderURL == nil
+                    ? "Off"
+                    : "Only BreakBar’s marked section"
+            )
+
+            HStack {
+                Button("Export Complete History…", action: model.exportCompleteHistory)
+                    .disabled(!model.canExportCompleteHistory)
+                Button("Delete All Local History…", role: .destructive) {
+                    isConfirmingDeletion = true
+                }
+                .disabled(!model.canDeleteAllLocalHistory)
+            }
+
+            if model.state.phase != .clockedOut {
+                Text("Clock out before deleting history so no active session can be removed.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            if let message = model.privacyDataMessage {
+                Label(
+                    message,
+                    systemImage: model.privacyDataMessageIsError
+                        ? "exclamationmark.triangle.fill"
+                        : "checkmark.circle.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(model.privacyDataMessageIsError ? Color.red : Color.secondary)
+            }
+        }
+        .alert("Delete all local history?", isPresented: $isConfirmingDeletion) {
+            Button("Delete History", role: .destructive, action: model.deleteAllLocalHistory)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                "This permanently removes every work session and activity from this Mac. "
+                    + "BreakBar settings and Obsidian notes will not change. This cannot be undone."
+            )
         }
     }
 }

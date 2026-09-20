@@ -6,6 +6,7 @@ import BreakBarPersistence
 import Combine
 import Foundation
 import ServiceManagement
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -28,6 +29,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var obsidianFilenameFormat: String
     @Published private(set) var obsidianExportMessage: String?
     @Published private(set) var obsidianExportMessageIsError: Bool
+    @Published private(set) var privacyDataMessage: String?
+    @Published private(set) var privacyDataMessageIsError: Bool
     @Published private(set) var busyBarEnabled: Bool
     @Published private(set) var busyBarAddress: String
     @Published private(set) var busyBarConnectionState: BusyBarConnectionState
@@ -118,6 +121,8 @@ final class AppModel: ObservableObject {
         ) ?? ObsidianExporter.defaultFilenameFormat
         obsidianExportMessage = nil
         obsidianExportMessageIsError = false
+        privacyDataMessage = nil
+        privacyDataMessageIsError = false
         let initialBusyBarEnabled = UserDefaults.standard.bool(
             forKey: Self.busyBarEnabledKey
         )
@@ -537,6 +542,76 @@ final class AppModel: ObservableObject {
 
     var canExportToday: Bool {
         !isDemoMode && obsidianDailyNotesFolderURL != nil && todayHistory != nil
+    }
+
+    var canExportCompleteHistory: Bool {
+        repository != nil
+    }
+
+    var canDeleteAllLocalHistory: Bool {
+        repository != nil && state.phase == .clockedOut
+    }
+
+    func exportCompleteHistory() {
+        guard let repository else {
+            privacyDataMessage = "The history database is unavailable."
+            privacyDataMessageIsError = true
+            return
+        }
+
+        let exportDate = Date()
+        let panel = NSSavePanel()
+        panel.title = "Export Complete BreakBar History"
+        panel.prompt = "Export"
+        panel.nameFieldStringValue = Self.historyArchiveFilename(for: exportDate)
+        panel.allowedContentTypes = [.json]
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let destinationURL = panel.url else { return }
+
+        do {
+            let archive = try repository.completeHistory(exportedAt: exportDate)
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .secondsSince1970
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+            let data = try encoder.encode(archive)
+            try data.write(to: destinationURL, options: .atomic)
+            privacyDataMessage = "Exported \(archive.sessions.count) work sessions and "
+                + "\(archive.intervals.count) activities."
+            privacyDataMessageIsError = false
+        } catch {
+            privacyDataMessage = "History export failed: \(error.localizedDescription)"
+            privacyDataMessageIsError = true
+        }
+    }
+
+    func deleteAllLocalHistory() {
+        guard state.phase == .clockedOut else {
+            privacyDataMessage = SessionRepositoryError.historyDeletionRequiresClockedOut
+                .localizedDescription
+            privacyDataMessageIsError = true
+            return
+        }
+        guard let repository else {
+            privacyDataMessage = "The history database is unavailable."
+            privacyDataMessageIsError = true
+            return
+        }
+
+        do {
+            let result = try repository.deleteAllHistory(expectedState: state)
+            refreshTodayHistory()
+            switch result {
+            case .deleted:
+                privacyDataMessage = "Deleted all local history. Settings and Obsidian notes were not changed."
+                privacyDataMessageIsError = false
+            case let .deletedWithCleanupWarning(message):
+                privacyDataMessage = "History was deleted, but storage cleanup did not finish: \(message)"
+                privacyDataMessageIsError = true
+            }
+        } catch {
+            privacyDataMessage = "History could not be deleted: \(error.localizedDescription)"
+            privacyDataMessageIsError = true
+        }
     }
 
     func chooseObsidianDailyNotesFolder() {
@@ -1269,6 +1344,13 @@ final class AppModel: ObservableObject {
         }
         return base.appendingPathComponent("BreakBar", isDirectory: true)
             .appendingPathComponent(isDemoMode ? "breakbar-demo.sqlite" : "breakbar.sqlite")
+    }
+
+    private static func historyArchiveFilename(for date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate]
+        formatter.timeZone = .current
+        return "BreakBar History \(formatter.string(from: date)).json"
     }
 
     private func synchronizeWindows(

@@ -58,6 +58,101 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testCompleteHistoryArchiveIncludesEverySessionAndRoundTripsAsJSON() throws {
+        try withRepository { repository, _ in
+            let history = try createClosedCycle(in: repository)
+            let exportedAt = origin.addingTimeInterval(300)
+
+            let archive = try repository.completeHistory(exportedAt: exportedAt)
+
+            XCTAssertEqual(archive.formatVersion, HistoryArchive.currentFormatVersion)
+            XCTAssertEqual(archive.dateEncoding, "secondsSince1970")
+            XCTAssertEqual(archive.exportedAt, exportedAt)
+            XCTAssertEqual(archive.sessions, history.sessions)
+            XCTAssertEqual(archive.intervals, history.intervals)
+
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .secondsSince1970
+            let data = try encoder.encode(archive)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .secondsSince1970
+            XCTAssertEqual(try decoder.decode(HistoryArchive.self, from: data), archive)
+        }
+    }
+
+    func testDeleteAllHistoryPreservesClockedOutStateAndRepositoryUsability() throws {
+        try withRepository { repository, databaseURL in
+            _ = try createClosedCycle(in: repository)
+            let clockedOutState = try XCTUnwrap(repository.loadState())
+            let archiveBeforeDeletion = try repository.completeHistory()
+            let deletedIdentifiers = archiveBeforeDeletion.sessions.map(\.id)
+                + archiveBeforeDeletion.intervals.map(\.id)
+            XCTAssertEqual(clockedOutState.phase, .clockedOut)
+
+            XCTAssertEqual(
+                try repository.deleteAllHistory(expectedState: clockedOutState),
+                .deleted
+            )
+
+            XCTAssertEqual(
+                try repository.stats(),
+                SessionRepositoryStats(
+                    totalSessions: 0,
+                    openSessions: 0,
+                    totalIntervals: 0,
+                    openIntervals: 0,
+                    focusIntervals: 0,
+                    breakIntervals: 0
+                )
+            )
+            XCTAssertEqual(try repository.loadState(), clockedOutState)
+            XCTAssertTrue(try repository.completeHistory().sessions.isEmpty)
+            XCTAssertTrue(try repository.completeHistory().intervals.isEmpty)
+
+            let storageURLs = [
+                databaseURL,
+                URL(fileURLWithPath: databaseURL.path + "-wal"),
+            ]
+            for storageURL in storageURLs
+            where FileManager.default.fileExists(atPath: storageURL.path) {
+                let storedBytes = try Data(contentsOf: storageURL)
+                for identifier in deletedIdentifiers {
+                    XCTAssertNil(storedBytes.range(of: Data(identifier.utf8)))
+                }
+            }
+
+            var engine = BreakBarEngine(state: clockedOutState, policy: policy)
+            try commit(
+                .clockIn,
+                at: origin.addingTimeInterval(400),
+                engine: &engine,
+                repository: repository
+            )
+            XCTAssertEqual(try repository.stats().totalSessions, 1)
+            XCTAssertEqual(try repository.stats().openSessions, 1)
+        }
+    }
+
+    func testDeleteAllHistoryRejectsAnActiveSessionWithoutChangingHistory() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+
+            XCTAssertThrowsError(
+                try repository.deleteAllHistory(expectedState: engine.state)
+            ) { error in
+                XCTAssertEqual(
+                    error as? SessionRepositoryError,
+                    .historyDeletionRequiresClockedOut
+                )
+            }
+            XCTAssertEqual(try repository.stats().totalSessions, 1)
+            XCTAssertEqual(try repository.stats().openSessions, 1)
+            XCTAssertEqual(try repository.stats().totalIntervals, 1)
+        }
+    }
+
     func testEveryActivePhaseAndEnforcementStateRecoversAfterReopen() throws {
         let scenarios: [(commands: [(BreakCommand, TimeInterval)], intervalCount: Int)] = [
             ([(.clockIn, 0)], 1),

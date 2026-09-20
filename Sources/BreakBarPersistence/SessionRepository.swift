@@ -21,6 +21,7 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
     case invalidActiveSessionStart
     case sessionCorrectionWouldInvalidateIntervals
     case sessionCorrectionOverlapsExistingSession
+    case historyDeletionRequiresClockedOut
     case unsupportedTransition(from: BreakBarPhase, to: BreakBarPhase)
 
     public var errorDescription: String? {
@@ -43,10 +44,17 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
         case .sessionCorrectionWouldInvalidateIntervals:
             "Those times would exclude activity already recorded in this work session."
         case .sessionCorrectionOverlapsExistingSession: "Those times overlap another work session."
+        case .historyDeletionRequiresClockedOut:
+            "Clock out before deleting local history."
         case let .unsupportedTransition(from, to):
             "Unsupported timer transition from \(from.rawValue) to \(to.rawValue)."
         }
     }
+}
+
+public enum HistoryDeletionResult: Equatable, Sendable {
+    case deleted
+    case deletedWithCleanupWarning(String)
 }
 
 public struct SessionRepositoryStats: Equatable, Sendable {
@@ -115,6 +123,7 @@ public final class SessionRepository {
             try execute("PRAGMA foreign_keys = ON")
             try execute("PRAGMA journal_mode = WAL")
             try execute("PRAGMA busy_timeout = 3000")
+            try execute("PRAGMA secure_delete = ON")
             try migrate()
         } catch {
             sqlite3_close(connection)
@@ -363,6 +372,75 @@ public final class SessionRepository {
         )
     }
 
+    public func completeHistory(exportedAt: Date = Date()) throws -> HistoryArchive {
+        let sessions: [WorkSessionHistory] = try withStatement(
+            """
+            SELECT id, started_at_utc, ended_at_utc,
+                   corrected_from_started_at_utc, corrected_from_ended_at_utc,
+                   updated_at_utc
+            FROM work_sessions
+            ORDER BY started_at_utc, id
+            """
+        ) { statement in
+            var rows: [WorkSessionHistory] = []
+            var result = sqlite3_step(statement)
+            while result == SQLITE_ROW {
+                rows.append(workSessionHistory(from: statement))
+                result = sqlite3_step(statement)
+            }
+            guard result == SQLITE_DONE else { throw lastError() }
+            return rows
+        }
+
+        let intervals: [ActivityHistoryInterval] = try withStatement(
+            """
+            SELECT id, session_id, kind, started_at_utc, ended_at_utc, source,
+                   corrected_from_kind, updated_at_utc
+            FROM intervals
+            ORDER BY started_at_utc, id
+            """
+        ) { statement in
+            var rows: [ActivityHistoryInterval] = []
+            var result = sqlite3_step(statement)
+            while result == SQLITE_ROW {
+                rows.append(try activityHistoryInterval(from: statement))
+                result = sqlite3_step(statement)
+            }
+            guard result == SQLITE_DONE else { throw lastError() }
+            return rows
+        }
+
+        return HistoryArchive(
+            exportedAt: exportedAt,
+            sessions: sessions,
+            intervals: intervals
+        )
+    }
+
+    public func deleteAllHistory(
+        expectedState: BreakBarState
+    ) throws -> HistoryDeletionResult {
+        guard expectedState.phase == .clockedOut else {
+            throw SessionRepositoryError.historyDeletionRequiresClockedOut
+        }
+
+        try transaction {
+            guard try loadState() == expectedState else {
+                throw SessionRepositoryError.staleState
+            }
+            try execute("DELETE FROM work_sessions")
+        }
+
+        do {
+            try checkpointAndTruncateWAL()
+            try execute("VACUUM")
+            try checkpointAndTruncateWAL()
+            return .deleted
+        } catch {
+            return .deletedWithCleanupWarning(error.localizedDescription)
+        }
+    }
+
     public func dailyHistory(
         on date: Date,
         calendar: Calendar = .current
@@ -387,16 +465,7 @@ public final class SessionRepository {
             var rows: [WorkSessionHistory] = []
             var result = sqlite3_step(statement)
             while result == SQLITE_ROW {
-                rows.append(
-                    WorkSessionHistory(
-                        id: String(cString: sqlite3_column_text(statement, 0)),
-                        startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
-                        endedAt: optionalDate(in: statement, at: 2),
-                        correctedFromStartedAt: optionalDate(in: statement, at: 3),
-                        correctedFromEndedAt: optionalDate(in: statement, at: 4),
-                        updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5))
-                    )
-                )
+                rows.append(workSessionHistory(from: statement))
                 result = sqlite3_step(statement)
             }
             guard result == SQLITE_DONE else { throw lastError() }
@@ -418,34 +487,7 @@ public final class SessionRepository {
             var rows: [ActivityHistoryInterval] = []
             var result = sqlite3_step(statement)
             while result == SQLITE_ROW {
-                let rawKind = String(cString: sqlite3_column_text(statement, 2))
-                guard let kind = ActivityKind(rawValue: rawKind) else {
-                    throw SessionRepositoryError.sqlite("Unknown activity kind: \(rawKind)")
-                }
-                let correctedFromKind: ActivityKind?
-                if sqlite3_column_type(statement, 6) == SQLITE_NULL {
-                    correctedFromKind = nil
-                } else {
-                    let rawCorrectedKind = String(cString: sqlite3_column_text(statement, 6))
-                    guard let parsedKind = ActivityKind(rawValue: rawCorrectedKind) else {
-                        throw SessionRepositoryError.sqlite(
-                            "Unknown original activity kind: \(rawCorrectedKind)"
-                        )
-                    }
-                    correctedFromKind = parsedKind
-                }
-                rows.append(
-                    ActivityHistoryInterval(
-                        id: String(cString: sqlite3_column_text(statement, 0)),
-                        sessionID: String(cString: sqlite3_column_text(statement, 1)),
-                        kind: kind,
-                        startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
-                        endedAt: optionalDate(in: statement, at: 4),
-                        source: String(cString: sqlite3_column_text(statement, 5)),
-                        correctedFromKind: correctedFromKind,
-                        updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 7))
-                    )
-                )
+                rows.append(try activityHistoryInterval(from: statement))
                 result = sqlite3_step(statement)
             }
             guard result == SQLITE_DONE else { throw lastError() }
@@ -1324,6 +1366,48 @@ public final class SessionRepository {
         return id
     }
 
+    private func workSessionHistory(from statement: OpaquePointer) -> WorkSessionHistory {
+        WorkSessionHistory(
+            id: String(cString: sqlite3_column_text(statement, 0)),
+            startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+            endedAt: optionalDate(in: statement, at: 2),
+            correctedFromStartedAt: optionalDate(in: statement, at: 3),
+            correctedFromEndedAt: optionalDate(in: statement, at: 4),
+            updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 5))
+        )
+    }
+
+    private func activityHistoryInterval(
+        from statement: OpaquePointer
+    ) throws -> ActivityHistoryInterval {
+        let rawKind = String(cString: sqlite3_column_text(statement, 2))
+        guard let kind = ActivityKind(rawValue: rawKind) else {
+            throw SessionRepositoryError.sqlite("Unknown activity kind: \(rawKind)")
+        }
+        let correctedFromKind: ActivityKind?
+        if sqlite3_column_type(statement, 6) == SQLITE_NULL {
+            correctedFromKind = nil
+        } else {
+            let rawCorrectedKind = String(cString: sqlite3_column_text(statement, 6))
+            guard let parsedKind = ActivityKind(rawValue: rawCorrectedKind) else {
+                throw SessionRepositoryError.sqlite(
+                    "Unknown original activity kind: \(rawCorrectedKind)"
+                )
+            }
+            correctedFromKind = parsedKind
+        }
+        return ActivityHistoryInterval(
+            id: String(cString: sqlite3_column_text(statement, 0)),
+            sessionID: String(cString: sqlite3_column_text(statement, 1)),
+            kind: kind,
+            startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+            endedAt: optionalDate(in: statement, at: 4),
+            source: String(cString: sqlite3_column_text(statement, 5)),
+            correctedFromKind: correctedFromKind,
+            updatedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 7))
+        )
+    }
+
     private func closeOpenInterval(at date: Date) throws {
         try withStatement(
             "UPDATE intervals SET ended_at_utc = ?, updated_at_utc = ? WHERE ended_at_utc IS NULL"
@@ -1440,6 +1524,22 @@ public final class SessionRepository {
             try? execute("ROLLBACK")
             throw error
         }
+    }
+
+    private func checkpointAndTruncateWAL() throws {
+        guard let database else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        var logFrames: Int32 = 0
+        var checkpointedFrames: Int32 = 0
+        let result = sqlite3_wal_checkpoint_v2(
+            database,
+            nil,
+            SQLITE_CHECKPOINT_TRUNCATE,
+            &logFrames,
+            &checkpointedFrames
+        )
+        guard result == SQLITE_OK else { throw lastError() }
     }
 
     private func execute(_ sql: String) throws {

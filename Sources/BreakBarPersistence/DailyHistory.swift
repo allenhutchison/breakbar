@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ActivityKind: String, CaseIterable, Equatable, Sendable {
+public enum ActivityKind: String, CaseIterable, Codable, Equatable, Sendable {
     case focus
     case meeting
     case breakTime = "break"
@@ -9,7 +9,7 @@ public enum ActivityKind: String, CaseIterable, Equatable, Sendable {
     case away
 }
 
-public struct WorkSessionHistory: Equatable, Identifiable, Sendable {
+public struct WorkSessionHistory: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let startedAt: Date
     public let endedAt: Date?
@@ -38,7 +38,7 @@ public struct WorkSessionHistory: Equatable, Identifiable, Sendable {
     }
 }
 
-public struct ActivityHistoryInterval: Equatable, Identifiable, Sendable {
+public struct ActivityHistoryInterval: Codable, Equatable, Identifiable, Sendable {
     public let id: String
     public let sessionID: String
     public let kind: ActivityKind
@@ -68,6 +68,29 @@ public struct ActivityHistoryInterval: Equatable, Identifiable, Sendable {
         self.source = source
         self.correctedFromKind = correctedFromKind
         self.updatedAt = updatedAt
+    }
+}
+
+public struct HistoryArchive: Codable, Equatable, Sendable {
+    public static let currentFormatVersion = 1
+
+    public let formatVersion: Int
+    public let dateEncoding: String
+    public let exportedAt: Date
+    public let sessions: [WorkSessionHistory]
+    public let intervals: [ActivityHistoryInterval]
+
+    public init(
+        formatVersion: Int = Self.currentFormatVersion,
+        exportedAt: Date,
+        sessions: [WorkSessionHistory],
+        intervals: [ActivityHistoryInterval]
+    ) {
+        self.formatVersion = formatVersion
+        dateEncoding = "secondsSince1970"
+        self.exportedAt = exportedAt
+        self.sessions = sessions
+        self.intervals = intervals
     }
 }
 
