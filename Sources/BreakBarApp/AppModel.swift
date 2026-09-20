@@ -1349,6 +1349,7 @@ final class AppModel: ObservableObject {
     private static func historyArchiveFilename(for date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withFullDate]
+        formatter.timeZone = .current
         return "BreakBar History \(formatter.string(from: date)).json"
     }
 
