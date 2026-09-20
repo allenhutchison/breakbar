@@ -8,6 +8,9 @@ final class AppLaunchConfigurationTests: XCTestCase {
             AppLaunchConfiguration.parse(arguments: ["BreakBar"]),
             AppLaunchConfiguration(mode: .standard, databaseURL: nil)
         )
+        XCTAssertTrue(
+            AppLaunchConfiguration.parse(arguments: ["BreakBar"]).allowsLiveIntegrations
+        )
         XCTAssertEqual(
             AppLaunchConfiguration.parse(arguments: ["BreakBar", "--demo"]),
             AppLaunchConfiguration(mode: .demo, databaseURL: nil)
@@ -35,6 +38,7 @@ final class AppLaunchConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.referenceDate, AppLaunchConfiguration.uiTestReferenceDate)
         XCTAssertFalse(configuration.isDemoMode)
         XCTAssertTrue(configuration.isUITestMode)
+        XCTAssertFalse(configuration.allowsLiveIntegrations)
     }
 
     func testUITestModeRejectsDatabaseOutsideTemporaryDirectory() throws {

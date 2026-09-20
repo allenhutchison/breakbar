@@ -69,8 +69,8 @@ final class AppModel: ObservableObject {
     init(configuration: AppLaunchConfiguration = .current) {
         isDemoMode = configuration.isDemoMode
         isUITestMode = configuration.isUITestMode
-        calendarMonitor = CalendarMonitor(monitoringEnabled: !configuration.isUITestMode)
-        callActivityMonitor = CallActivityMonitor(pollingEnabled: !configuration.isUITestMode)
+        calendarMonitor = CalendarMonitor(monitoringEnabled: configuration.allowsLiveIntegrations)
+        callActivityMonitor = CallActivityMonitor(pollingEnabled: configuration.allowsLiveIntegrations)
         let initialPolicy = isDemoMode
             ? Self.demoPolicy
             : Self.loadPolicyPreferences()
@@ -138,9 +138,8 @@ final class AppModel: ObservableObject {
         obsidianExportMessageIsError = false
         privacyDataMessage = nil
         privacyDataMessageIsError = false
-        let initialBusyBarEnabled = UserDefaults.standard.bool(
-            forKey: Self.busyBarEnabledKey
-        )
+        let initialBusyBarEnabled = configuration.allowsLiveIntegrations
+            && UserDefaults.standard.bool(forKey: Self.busyBarEnabledKey)
         busyBarEnabled = initialBusyBarEnabled
         busyBarAddress = BusyBarAddress.normalized(
             UserDefaults.standard.string(forKey: Self.busyBarAddressKey)

@@ -25,6 +25,10 @@ struct AppLaunchConfiguration: Equatable {
         return false
     }
 
+    var allowsLiveIntegrations: Bool {
+        !isUITestMode
+    }
+
     var uiTestScenario: UITestScenario? {
         guard case let .uiTest(scenario) = mode else { return nil }
         return scenario
