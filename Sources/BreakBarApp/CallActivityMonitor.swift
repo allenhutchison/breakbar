@@ -193,9 +193,13 @@ final class CallActivityMonitor: ObservableObject {
     private var debouncer = BreakCallActivityDebouncer()
     private var pollingTask: Task<Void, Never>?
 
-    init(provider: any CallActivityProviding = CoreAudioCallActivityProvider()) {
+    init(
+        provider: any CallActivityProviding = CoreAudioCallActivityProvider(),
+        pollingEnabled: Bool = true
+    ) {
         self.provider = provider
         signal = nil
+        guard pollingEnabled else { return }
         poll()
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {

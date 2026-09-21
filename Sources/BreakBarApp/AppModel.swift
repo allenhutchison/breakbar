@@ -37,8 +37,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var notificationAccessState: NotificationAccessState
 
     let isDemoMode: Bool
-    let calendarMonitor = CalendarMonitor()
-    let callActivityMonitor = CallActivityMonitor()
+    let isUITestMode: Bool
+    let calendarMonitor: CalendarMonitor
+    let callActivityMonitor: CallActivityMonitor
 
     private var engine: BreakBarEngine
     private let repository: SessionRepository?
@@ -65,23 +66,38 @@ final class AppModel: ObservableObject {
     private var lastObsidianExportAttemptSucceeded: Bool?
     private var observations = Set<AnyCancellable>()
 
-    init() {
-        isDemoMode = CommandLine.arguments.contains("--demo")
+    init(configuration: AppLaunchConfiguration = .current) {
+        isDemoMode = configuration.isDemoMode
+        isUITestMode = configuration.isUITestMode
+        calendarMonitor = CalendarMonitor(monitoringEnabled: configuration.allowsLiveIntegrations)
+        callActivityMonitor = CallActivityMonitor(pollingEnabled: configuration.allowsLiveIntegrations)
         let initialPolicy = isDemoMode
             ? Self.demoPolicy
             : Self.loadPolicyPreferences()
         policy = initialPolicy
 
+        let initialNow = configuration.referenceDate ?? Date()
+
         var restored = BreakBarState()
         var loadedRepository: SessionRepository?
         var startupMessage: String?
         do {
-            let databaseURL = try Self.databaseURL(isDemoMode: isDemoMode)
+            let databaseURL = try configuration.databaseURL
+                ?? Self.databaseURL(isDemoMode: isDemoMode)
             let repository = try SessionRepository(url: databaseURL)
             try repository.bootstrapIfNeeded(
                 state: isDemoMode
                     ? BreakBarState()
-                    : LegacyStatePersistence.load() ?? BreakBarState()
+                    : configuration.isUITestMode
+                        ? BreakBarState()
+                        : LegacyStatePersistence.load() ?? BreakBarState(),
+                at: initialNow
+            )
+            try Self.seedUITestScenario(
+                configuration.uiTestScenario,
+                in: repository,
+                policy: initialPolicy,
+                at: initialNow
             )
             restored = try repository.loadState() ?? BreakBarState()
             loadedRepository = repository
@@ -89,7 +105,6 @@ final class AppModel: ObservableObject {
             startupMessage = "BreakBar could not open its history database: \(error.localizedDescription)"
         }
 
-        let initialNow = Date()
         var initialHistory: DailyHistory?
         var initialHistoryMessage: String?
         if let loadedRepository {
@@ -123,9 +138,8 @@ final class AppModel: ObservableObject {
         obsidianExportMessageIsError = false
         privacyDataMessage = nil
         privacyDataMessageIsError = false
-        let initialBusyBarEnabled = UserDefaults.standard.bool(
-            forKey: Self.busyBarEnabledKey
-        )
+        let initialBusyBarEnabled = configuration.allowsLiveIntegrations
+            && UserDefaults.standard.bool(forKey: Self.busyBarEnabledKey)
         busyBarEnabled = initialBusyBarEnabled
         busyBarAddress = BusyBarAddress.normalized(
             UserDefaults.standard.string(forKey: Self.busyBarAddressKey)
@@ -133,7 +147,9 @@ final class AppModel: ObservableObject {
         ) ?? BusyBarAddress.defaultUSB
         busyBarConnectionState = initialBusyBarEnabled ? .connecting : .off
         notificationAccessState = .unknown
-        refreshLaunchAtLoginStatus()
+        if !isUITestMode {
+            refreshLaunchAtLoginStatus()
+        }
 
         calendarMonitor.$schedulingConstraints
             .removeDuplicates()
@@ -162,18 +178,20 @@ final class AppModel: ObservableObject {
             }
             .store(in: &observations)
 
-        ticker = Task { [weak self] in
-            while !Task.isCancelled {
-                let currentTime = Date().timeIntervalSince1970
-                let nextSecond = floor(currentTime) + 1
-                try? await Task.sleep(for: .seconds(nextSecond - currentTime))
-                guard !Task.isCancelled else { return }
+        if !isUITestMode {
+            ticker = Task { [weak self] in
+                while !Task.isCancelled {
+                    let currentTime = Date().timeIntervalSince1970
+                    let nextSecond = floor(currentTime) + 1
+                    try? await Task.sleep(for: .seconds(nextSecond - currentTime))
+                    guard !Task.isCancelled else { return }
+                    self?.tick()
+                }
+            }
+
+            Task { [weak self] in
                 self?.tick()
             }
-        }
-
-        Task { [weak self] in
-            self?.tick()
         }
 
         if busyBarEnabled {
@@ -1024,6 +1042,37 @@ final class AppModel: ObservableObject {
         minimumBreakDuration: 20,
         idleThreshold: 10
     )
+
+    private static func seedUITestScenario(
+        _ scenario: AppLaunchConfiguration.UITestScenario?,
+        in repository: SessionRepository,
+        policy: BreakPolicy,
+        at referenceDate: Date
+    ) throws {
+        guard scenario == .settingsPrivacy,
+              try repository.completeHistory(exportedAt: referenceDate).sessions.isEmpty,
+              let restored = try repository.loadState(),
+              restored.phase == .clockedOut
+        else {
+            return
+        }
+
+        var engine = BreakBarEngine(state: restored, policy: policy)
+        for (command, date) in [
+            (BreakCommand.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
+            (BreakCommand.clockOut, referenceDate.addingTimeInterval(-30 * 60)),
+        ] {
+            let previous = engine.state
+            var candidate = engine
+            guard candidate.handle(command, at: date) == .changed else { continue }
+            try repository.commitTransition(
+                from: previous,
+                to: candidate.state,
+                at: date
+            )
+            engine = candidate
+        }
+    }
 
     private static let callApplicationNames: [String: String] = [
         "us.zoom.xos": "Zoom",

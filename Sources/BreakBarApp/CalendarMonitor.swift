@@ -51,10 +51,14 @@ final class CalendarMonitor: NSObject, ObservableObject {
     private let defaults: UserDefaults
     private var refreshTask: Task<Void, Never>?
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        monitoringEnabled: Bool = true
+    ) {
         self.defaults = defaults
         super.init()
 
+        guard monitoringEnabled else { return }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(eventStoreChanged(_:)),

@@ -7,12 +7,9 @@ import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
-    let model = AppModel()
-    private let updaterController = SPUStandardUpdaterController(
-        startingUpdater: true,
-        updaterDelegate: nil,
-        userDriverDelegate: nil
-    )
+    let model: AppModel
+    private let launchConfiguration: AppLaunchConfiguration
+    private let updaterController: SPUStandardUpdaterController?
 
     private let compactStatusItemWidth: CGFloat = 62
     private let longTimerStatusItemWidth: CGFloat = 70
@@ -24,12 +21,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private let onboardingWindowController = OnboardingWindowController()
     private var modelObservation: AnyCancellable?
 
+    override init() {
+        let launchConfiguration = AppLaunchConfiguration.current
+        self.launchConfiguration = launchConfiguration
+        model = AppModel(configuration: launchConfiguration)
+        updaterController = launchConfiguration.isUITestMode
+            ? nil
+            : SPUStandardUpdaterController(
+                startingUpdater: true,
+                updaterDelegate: nil,
+                userDriverDelegate: nil
+            )
+        super.init()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureStatusItem()
         configurePopover()
         observeModel()
-        observeLifecycleChanges()
         updateStatusItem()
+
+        if launchConfiguration.isUITestMode {
+            showSettings()
+            return
+        }
+
+        observeLifecycleChanges()
 
         let center = UNUserNotificationCenter.current()
         center.delegate = self
@@ -47,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func applicationDidBecomeActive(_ notification: Notification) {
+        guard !launchConfiguration.isUITestMode else { return }
         model.refreshLaunchAtLoginStatus()
         model.calendarMonitor.refresh()
         refreshNotificationAccessState()
@@ -57,7 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     func checkForUpdates() {
-        updaterController.checkForUpdates(nil)
+        updaterController?.checkForUpdates(nil)
     }
 
     func showSettings() {
