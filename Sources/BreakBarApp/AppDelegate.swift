@@ -258,46 +258,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     }
 
     private func statusImage(symbolName: String, text: String, width: CGFloat) -> NSImage {
-        let image = NSImage(size: NSSize(width: width, height: 18), flipped: false) { bounds in
-            NSGraphicsContext.current?.imageInterpolation = .high
-
-            if let symbol = NSImage(
-                systemSymbolName: symbolName,
-                accessibilityDescription: nil
-            )?.withSymbolConfiguration(
-                NSImage.SymbolConfiguration(pointSize: 13, weight: .medium)
-            ) {
-                let symbolSize = NSSize(width: 15, height: 15)
-                symbol.draw(in: NSRect(
-                    x: 1,
-                    y: floor((bounds.height - symbolSize.height) / 2),
-                    width: symbolSize.width,
-                    height: symbolSize.height
-                ))
-            }
-
-            let paragraph = NSMutableParagraphStyle()
-            paragraph.alignment = .left
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .semibold),
-                .foregroundColor: NSColor.black,
-                .paragraphStyle: paragraph,
-            ]
-            let string = text as NSString
-            let measured = string.size(withAttributes: attributes)
-            string.draw(
-                in: NSRect(
-                    x: 20,
-                    y: floor((bounds.height - measured.height) / 2),
-                    width: bounds.width - 21,
-                    height: ceil(measured.height)
-                ),
-                withAttributes: attributes
-            )
-            return true
-        }
-        image.isTemplate = true
-        return image
+        StatusItemImageRenderer.image(
+            symbolName: symbolName,
+            text: text,
+            width: width
+        )
     }
 
     @objc private func togglePopover(_ sender: NSStatusBarButton) {
