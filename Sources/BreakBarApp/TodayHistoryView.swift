@@ -4,6 +4,9 @@ import SwiftUI
 struct TodayHistoryView: View {
     @ObservedObject var model: AppModel
     @State private var historyEditor: HistoryEditor?
+    @State private var selectedDate = Date()
+    @State private var selectedDayHistory: DailyHistory?
+    @State private var selectedDayError: String?
 
     private let columns = [
         GridItem(.flexible(), spacing: 10),
@@ -13,9 +16,9 @@ struct TodayHistoryView: View {
 
     var body: some View {
         Group {
-            if let history = model.todayHistory {
+            if let history = showingToday ? model.todayHistory : selectedDayHistory {
                 historyContent(history)
-            } else if let message = model.historyMessage {
+            } else if let message = showingToday ? model.historyMessage : selectedDayError {
                 ContentUnavailableView(
                     "History unavailable",
                     systemImage: "exclamationmark.triangle",
@@ -26,7 +29,33 @@ struct TodayHistoryView: View {
             }
         }
         .frame(minWidth: 560, minHeight: 520)
-        .onAppear(perform: model.refreshTodayHistory)
+        .onAppear(perform: refreshSelectedDay)
+    }
+
+    private var showingToday: Bool {
+        Calendar.current.isDate(selectedDate, inSameDayAs: Date())
+    }
+
+    private func refreshSelectedDay() {
+        if showingToday {
+            model.refreshTodayHistory()
+        } else {
+            do {
+                selectedDayHistory = try model.history(on: selectedDate)
+                selectedDayError = nil
+            } catch {
+                selectedDayHistory = nil
+                selectedDayError = error.localizedDescription
+            }
+        }
+    }
+
+    private func moveDay(by days: Int) {
+        guard let date = Calendar.current.date(byAdding: .day, value: days, to: selectedDate),
+              Calendar.current.startOfDay(for: date)
+                <= Calendar.current.startOfDay(for: Date()) else { return }
+        selectedDate = date
+        refreshSelectedDay()
     }
 
     private func historyContent(_ history: DailyHistory) -> some View {
@@ -128,6 +157,9 @@ struct TodayHistoryView: View {
                                     }
                                     .buttonStyle(.plain)
                                     .accessibilityHint("Edit this activity")
+                                    .accessibilityIdentifier(
+                                        "history.interval.\(interval.kind.rawValue).\(interval.id)"
+                                    )
                                 }
                                 if index < history.intervals.count - 1 {
                                     Divider().padding(.leading, 42)
@@ -141,7 +173,7 @@ struct TodayHistoryView: View {
             .padding(24)
         }
         .background(Color(nsColor: .windowBackgroundColor))
-        .sheet(item: $historyEditor) { editor in
+        .sheet(item: $historyEditor, onDismiss: refreshSelectedDay) { editor in
             switch editor {
             case let .interval(interval):
                 HistoryCorrectionView(model: model, interval: interval)
@@ -154,18 +186,27 @@ struct TodayHistoryView: View {
     private func header(_ history: DailyHistory) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 3) {
-                Text("Today")
+                Text(showingToday ? "Today" : "History")
                     .font(.largeTitle.weight(.bold))
                 Text(history.day.start.formatted(date: .complete, time: .omitted))
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            Button { moveDay(by: -1) } label: {
+                Image(systemName: "chevron.left")
+            }
+            .accessibilityLabel("Previous day")
+            Button { moveDay(by: 1) } label: {
+                Image(systemName: "chevron.right")
+            }
+            .disabled(showingToday)
+            .accessibilityLabel("Next day")
             Button {
                 model.exportTodayHistory()
             } label: {
                 Label("Export", systemImage: "square.and.arrow.up")
             }
-            .disabled(!model.canExportToday)
+            .disabled(!showingToday || !model.canExportToday)
             .help(
                 model.isDemoMode
                     ? "Obsidian export is unavailable in demo mode"
@@ -174,7 +215,7 @@ struct TodayHistoryView: View {
                         : "Export today’s history to Obsidian"
             )
             Button {
-                model.refreshTodayHistory()
+                refreshSelectedDay()
             } label: {
                 Label("Refresh", systemImage: "arrow.clockwise")
             }
@@ -458,19 +499,23 @@ private struct SessionCorrectionView: View {
 private struct HistoryCorrectionView: View {
     @ObservedObject var model: AppModel
     let interval: ActivityHistoryInterval
+    let offersTravelClockOut: Bool
 
     @Environment(\.dismiss) private var dismiss
     @State private var kind: ActivityKind
     @State private var startedAt: Date
     @State private var endedAt: Date
+    @State private var correctedClockOutAt: Date
     @State private var errorMessage: String?
 
     init(model: AppModel, interval: ActivityHistoryInterval) {
         self.model = model
         self.interval = interval
+        offersTravelClockOut = model.canClockOutBeforeTravelReturn(interval)
         _kind = State(initialValue: interval.kind)
         _startedAt = State(initialValue: interval.startedAt)
         _endedAt = State(initialValue: interval.endedAt ?? interval.startedAt)
+        _correctedClockOutAt = State(initialValue: interval.endedAt ?? interval.startedAt)
     }
 
     var body: some View {
@@ -502,6 +547,30 @@ private struct HistoryCorrectionView: View {
                 )
             }
             .formStyle(.grouped)
+
+            if offersTravelClockOut,
+               let returnedAt = interval.endedAt
+            {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Forgot to clock out after travel?")
+                        .font(.headline)
+                    Text("Choose when your previous workday ended. BreakBar will stop the travel interval then and keep activity from your return in a separate work session.")
+                        .foregroundStyle(.secondary)
+                    DatePicker(
+                        "Clocked out",
+                        selection: $correctedClockOutAt,
+                        in: interval.startedAt ... returnedAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    Button("End previous work session") {
+                        saveTravelClockOut()
+                    }
+                    .disabled(
+                        correctedClockOutAt <= interval.startedAt
+                            || correctedClockOutAt >= returnedAt
+                    )
+                }
+            }
 
             if let errorMessage {
                 Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
@@ -536,6 +605,15 @@ private struct HistoryCorrectionView: View {
                 startedAt: startedAt,
                 endedAt: endedAt
             )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func saveTravelClockOut() {
+        do {
+            try model.clockOutBeforeTravelReturn(interval, at: correctedClockOutAt)
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

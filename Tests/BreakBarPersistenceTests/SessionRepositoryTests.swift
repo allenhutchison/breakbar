@@ -580,6 +580,155 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testClockOutBeforeTravelReturnSplitsOvernightSessionAndPreservesCurrentFocus() throws {
+        try withRepository { repository, databaseURL in
+            let day = utcCalendar.date(
+                from: DateComponents(year: 2026, month: 9, day: 23, hour: 19)
+            )!
+            let travelStartsAt = day.addingTimeInterval(60 * 60)
+            let clockedOutAt = day.addingTimeInterval(90 * 60)
+            let chainEndsAt = day.addingTimeInterval(14 * 60 * 60)
+            let returnedAt = day.addingTimeInterval(14 * 60 * 60 + 10 * 60)
+            let correctedAt = returnedAt.addingTimeInterval(60 * 60)
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: day)
+            try commit(.clockIn, at: day, engine: &engine, repository: repository)
+            let travel = BreakCalendarConstraint(
+                id: "overnight-travel", startAt: travelStartsAt,
+                endAt: chainEndsAt, kind: .travel
+            )
+            try commit(
+                .updateCalendarConstraints([travel]), at: day,
+                engine: &engine, repository: repository
+            )
+            try commit(.tick, at: travelStartsAt, engine: &engine, repository: repository)
+            try commit(.returnHome, at: returnedAt, engine: &engine, repository: repository)
+
+            let original = try repository.dailyHistory(on: returnedAt, calendar: utcCalendar)
+            let interval = try XCTUnwrap(original.intervals.first { $0.kind == .travel })
+            XCTAssertEqual(original.summary(at: correctedAt).travel, returnedAt.timeIntervalSince(original.day.start))
+
+            XCTAssertThrowsError(
+                try repository.clockOutBeforeTravelReturn(
+                    travelIntervalID: interval.id,
+                    clockedOutAt: travelStartsAt,
+                    expectedState: engine.state,
+                    correctedAt: correctedAt
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .travelCorrectionOutsideTravelInterval)
+            }
+            XCTAssertEqual(try repository.stats().totalSessions, 1)
+
+            XCTAssertThrowsError(
+                try repository.clockOutBeforeTravelReturn(
+                    travelIntervalID: interval.id,
+                    clockedOutAt: clockedOutAt,
+                    expectedState: BreakBarState(),
+                    correctedAt: correctedAt
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .staleState)
+            }
+
+            try repository.clockOutBeforeTravelReturn(
+                travelIntervalID: interval.id,
+                clockedOutAt: clockedOutAt,
+                expectedState: engine.state,
+                correctedAt: correctedAt
+            )
+
+            let previousDay = try repository.dailyHistory(on: day, calendar: utcCalendar)
+            let nextDay = try repository.dailyHistory(on: returnedAt, calendar: utcCalendar)
+            XCTAssertEqual(previousDay.sessions.count, 1)
+            XCTAssertEqual(previousDay.sessions[0].endedAt, clockedOutAt)
+            XCTAssertNil(previousDay.sessions[0].correctedFromEndedAt)
+            XCTAssertEqual(previousDay.intervals.last?.kind, .travel)
+            XCTAssertEqual(previousDay.intervals.last?.endedAt, clockedOutAt)
+            XCTAssertEqual(previousDay.summary(at: correctedAt).clockedIn, 90 * 60)
+            XCTAssertEqual(nextDay.sessions.count, 1)
+            XCTAssertEqual(nextDay.sessions[0].startedAt, returnedAt)
+            XCTAssertEqual(nextDay.intervals.map(\.kind), [.focus])
+            XCTAssertEqual(nextDay.summary(at: correctedAt).travel, 0)
+            XCTAssertEqual(nextDay.summary(at: correctedAt).clockedIn, 60 * 60)
+            XCTAssertEqual(try repository.loadState(), engine.state)
+            XCTAssertEqual(try repository.stats().openSessions, 1)
+            XCTAssertEqual(try repository.stats().openIntervals, 1)
+            XCTAssertEqual(try repository.stats().totalSessions, 2)
+
+            XCTAssertThrowsError(
+                try repository.clockOutBeforeTravelReturn(
+                    travelIntervalID: interval.id,
+                    clockedOutAt: clockedOutAt,
+                    expectedState: engine.state,
+                    correctedAt: correctedAt
+                )
+            ) { error in
+                XCTAssertEqual(error as? SessionRepositoryError, .travelCorrectionRequiresReturnedFocus)
+            }
+
+            let reopened = try SessionRepository(url: databaseURL)
+            try commit(
+                .clockOut, at: correctedAt,
+                engine: &engine, repository: reopened
+            )
+            XCTAssertEqual(try reopened.stats().openSessions, 0)
+        }
+    }
+
+    func testTravelClockOutCorrectionAlsoWorksAfterLaterClockOut() throws {
+        try withRepository { repository, _ in
+            var engine = BreakBarEngine(policy: policy)
+            try repository.bootstrapIfNeeded(state: engine.state, at: origin)
+            try commit(.clockIn, at: origin, engine: &engine, repository: repository)
+            let travel = BreakCalendarConstraint(
+                id: "travel", startAt: origin.addingTimeInterval(100),
+                endAt: origin.addingTimeInterval(200), kind: .travel
+            )
+            try commit(
+                .updateCalendarConstraints([travel]), at: origin,
+                engine: &engine, repository: repository
+            )
+            try commit(
+                .tick, at: origin.addingTimeInterval(100),
+                engine: &engine, repository: repository
+            )
+            try commit(
+                .returnHome, at: origin.addingTimeInterval(300),
+                engine: &engine, repository: repository
+            )
+            try commit(
+                .clockOut, at: origin.addingTimeInterval(400),
+                engine: &engine, repository: repository
+            )
+
+            let travelInterval = try XCTUnwrap(
+                repository.dailyHistory(on: origin, calendar: utcCalendar)
+                    .intervals.first { $0.kind == .travel }
+            )
+            try repository.clockOutBeforeTravelReturn(
+                travelIntervalID: travelInterval.id,
+                clockedOutAt: origin.addingTimeInterval(250),
+                expectedState: engine.state,
+                correctedAt: origin.addingTimeInterval(500)
+            )
+
+            let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(history.sessions.count, 2)
+            XCTAssertEqual(history.sessions[0].endedAt, origin.addingTimeInterval(250))
+            XCTAssertEqual(history.sessions[1].startedAt, origin.addingTimeInterval(300))
+            XCTAssertEqual(history.sessions[1].endedAt, origin.addingTimeInterval(400))
+            XCTAssertEqual(history.intervals.map(\.sessionID), [
+                history.sessions[0].id,
+                history.sessions[0].id,
+                history.sessions[1].id,
+            ])
+            XCTAssertEqual(history.summary(at: origin.addingTimeInterval(500)).travel, 150)
+            XCTAssertEqual(try repository.stats().openSessions, 0)
+            XCTAssertEqual(try repository.loadState(), engine.state)
+        }
+    }
+
     func testLiveCallSplitsMeetingHistoryFromFocus() throws {
         try withRepository { repository, databaseURL in
             var engine = BreakBarEngine(policy: policy)

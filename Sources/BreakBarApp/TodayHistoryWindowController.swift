@@ -19,7 +19,7 @@ final class TodayHistoryWindowController {
             backing: .buffered,
             defer: false
         )
-        window.title = "Today"
+        window.title = "History"
         window.minSize = NSSize(width: 560, height: 520)
         window.isReleasedWhenClosed = false
         window.contentViewController = NSHostingController(

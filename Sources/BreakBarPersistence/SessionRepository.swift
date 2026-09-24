@@ -21,6 +21,8 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
     case invalidActiveSessionStart
     case sessionCorrectionWouldInvalidateIntervals
     case sessionCorrectionOverlapsExistingSession
+    case travelCorrectionRequiresReturnedFocus
+    case travelCorrectionOutsideTravelInterval
     case historyDeletionRequiresClockedOut
     case unsupportedTransition(from: BreakBarPhase, to: BreakBarPhase)
 
@@ -44,6 +46,10 @@ public enum SessionRepositoryError: Error, LocalizedError, Equatable {
         case .sessionCorrectionWouldInvalidateIntervals:
             "Those times would exclude activity already recorded in this work session."
         case .sessionCorrectionOverlapsExistingSession: "Those times overlap another work session."
+        case .travelCorrectionRequiresReturnedFocus:
+            "This travel interval must lead directly to a resumed focus session."
+        case .travelCorrectionOutsideTravelInterval:
+            "The clock-out time must fall within the travel interval."
         case .historyDeletionRequiresClockedOut:
             "Clock out before deleting local history."
         case let .unsupportedTransition(from, to):
@@ -790,6 +796,142 @@ public final class SessionRepository {
                     try bind(lastInterval.id, to: statement, at: 3)
                     try stepDone(statement)
                 }
+            }
+        }
+    }
+
+    public func clockOutBeforeTravelReturn(
+        travelIntervalID: String,
+        clockedOutAt: Date,
+        expectedState: BreakBarState,
+        correctedAt: Date = Date()
+    ) throws {
+        try transaction {
+            guard try loadState() == expectedState else {
+                throw SessionRepositoryError.staleState
+            }
+
+            let travel: (sessionID: String, startedAt: Date, returnedAt: Date,
+                         sessionStartedAt: Date, sessionEndedAt: Date?)? = try withStatement(
+                """
+                SELECT i.session_id, i.started_at_utc, i.ended_at_utc,
+                       s.started_at_utc, s.ended_at_utc
+                FROM intervals i
+                JOIN work_sessions s ON s.id = i.session_id
+                WHERE i.id = ? AND i.kind = 'travel' AND i.ended_at_utc IS NOT NULL
+                """
+            ) { statement in
+                try bind(travelIntervalID, to: statement, at: 1)
+                guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+                return (
+                    String(cString: sqlite3_column_text(statement, 0)),
+                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
+                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+                    optionalDate(in: statement, at: 4)
+                )
+            }
+            guard let travel else {
+                throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
+            }
+            guard travel.sessionEndedAt.map({ $0 > travel.returnedAt }) ?? true else {
+                throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
+            }
+            guard clockedOutAt > travel.startedAt,
+                  clockedOutAt > travel.sessionStartedAt,
+                  clockedOutAt < travel.returnedAt,
+                  clockedOutAt <= correctedAt
+            else {
+                throw SessionRepositoryError.travelCorrectionOutsideTravelInterval
+            }
+
+            let resumedFocusCount: Int = try withStatement(
+                """
+                SELECT COUNT(*) FROM intervals
+                WHERE session_id = ? AND kind = 'focus' AND started_at_utc = ?
+                """
+            ) { statement in
+                try bind(travel.sessionID, to: statement, at: 1)
+                try bind(travel.returnedAt, to: statement, at: 2)
+                guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
+                return Int(sqlite3_column_int64(statement, 0))
+            }
+            let laterBoundaryIntervalCount: Int = try withStatement(
+                """
+                SELECT COUNT(*) FROM intervals
+                WHERE session_id = ? AND started_at_utc >= ?
+                  AND ((? IS NULL AND ended_at_utc IS NULL) OR ended_at_utc = ?)
+                """
+            ) { statement in
+                try bind(travel.sessionID, to: statement, at: 1)
+                try bind(travel.returnedAt, to: statement, at: 2)
+                try bind(travel.sessionEndedAt, to: statement, at: 3)
+                try bind(travel.sessionEndedAt, to: statement, at: 4)
+                guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
+                return Int(sqlite3_column_int64(statement, 0))
+            }
+            guard resumedFocusCount == 1, laterBoundaryIntervalCount == 1 else {
+                throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
+            }
+
+            let newSessionID = UUID().uuidString
+            try withStatement(
+                """
+                UPDATE intervals
+                SET ended_at_utc = ?,
+                    corrected_from_kind = COALESCE(corrected_from_kind, kind),
+                    updated_at_utc = ?
+                WHERE id = ?
+                """
+            ) { statement in
+                try bind(clockedOutAt, to: statement, at: 1)
+                try bind(correctedAt, to: statement, at: 2)
+                try bind(travelIntervalID, to: statement, at: 3)
+                try stepDone(statement)
+            }
+            try withStatement(
+                """
+                UPDATE work_sessions
+                SET ended_at_utc = ?, updated_at_utc = ?
+                WHERE id = ?
+                """
+            ) { statement in
+                try bind(clockedOutAt, to: statement, at: 1)
+                try bind(correctedAt, to: statement, at: 2)
+                try bind(travel.sessionID, to: statement, at: 3)
+                try stepDone(statement)
+            }
+            guard sqlite3_changes(database) == 1 else {
+                throw SessionRepositoryError.missingOpenSession
+            }
+            try withStatement(
+                """
+                INSERT INTO work_sessions
+                    (id, started_at_utc, ended_at_utc, created_at_utc, updated_at_utc)
+                VALUES (?, ?, ?, ?, ?)
+                """
+            ) { statement in
+                try bind(newSessionID, to: statement, at: 1)
+                try bind(travel.returnedAt, to: statement, at: 2)
+                try bind(travel.sessionEndedAt, to: statement, at: 3)
+                try bind(correctedAt, to: statement, at: 4)
+                try bind(correctedAt, to: statement, at: 5)
+                try stepDone(statement)
+            }
+            try withStatement(
+                """
+                UPDATE intervals SET session_id = ?, updated_at_utc = ?
+                WHERE session_id = ? AND started_at_utc >= ?
+                """
+            ) { statement in
+                try bind(newSessionID, to: statement, at: 1)
+                try bind(correctedAt, to: statement, at: 2)
+                try bind(travel.sessionID, to: statement, at: 3)
+                try bind(travel.returnedAt, to: statement, at: 4)
+                try stepDone(statement)
+            }
+            guard sqlite3_changes(database) > 0 else {
+                throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
             }
         }
     }

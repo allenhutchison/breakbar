@@ -3,6 +3,49 @@ import XCTest
 
 final class SettingsPrivacyUITests: XCTestCase {
     @MainActor
+    func testPreviousDayTravelOffersPriorSessionClockOut() throws {
+        let appURL = ProcessInfo.processInfo.environment["BREAKBAR_UI_TEST_APP"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Self.defaultAppURL
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appURL.path))
+
+        let testDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BreakBarUITests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: testDirectory, withIntermediateDirectories: true)
+
+        let application = XCUIApplication(url: appURL)
+        application.launchArguments = [
+            "--ui-test",
+            "--ui-test-scenario", "overnight-travel-correction",
+            "--ui-test-database", testDirectory.appendingPathComponent("breakbar.sqlite").path,
+        ]
+        application.launch()
+        defer {
+            application.terminate()
+            try? FileManager.default.removeItem(at: testDirectory)
+        }
+        continueAfterFailure = false
+
+        let historyWindow = application.windows["History"]
+        XCTAssertTrue(historyWindow.waitForExistence(timeout: 5))
+        historyWindow.buttons["Previous day"].click()
+
+        let travelRow = historyWindow.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "history.interval.travel.")
+        ).firstMatch
+        XCTAssertTrue(travelRow.waitForExistence(timeout: 3))
+        for _ in 0 ..< 8 where !travelRow.isHittable {
+            historyWindow.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(travelRow.isHittable)
+        travelRow.click()
+
+        XCTAssertTrue(
+            historyWindow.buttons["End previous work session"].waitForExistence(timeout: 3)
+        )
+    }
+
+    @MainActor
     func testSettingsPrivacyExplanationAndDeletionFlow() throws {
         let environment = ProcessInfo.processInfo.environment
         let appURL = environment["BREAKBAR_UI_TEST_APP"]

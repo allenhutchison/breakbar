@@ -360,6 +360,13 @@ final class AppModel: ObservableObject {
         refreshTodayHistory(at: Date())
     }
 
+    func history(on date: Date) throws -> DailyHistory {
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        return try repository.dailyHistory(on: date)
+    }
+
     func correctHistoryInterval(
         _ interval: ActivityHistoryInterval,
         kind: ActivityKind,
@@ -380,6 +387,44 @@ final class AppModel: ObservableObject {
         refreshTodayHistory()
         exportConfiguredHistory(
             on: [interval.startedAt, interval.endedAt, startedAt, endedAt].compactMap { $0 },
+            at: eventDate
+        )
+    }
+
+    func canClockOutBeforeTravelReturn(_ interval: ActivityHistoryInterval) -> Bool {
+        guard interval.kind == .travel,
+              let returnedAt = interval.endedAt,
+              let repository,
+              let archive = try? repository.completeHistory(),
+              archive.sessions.contains(where: {
+                  $0.id == interval.sessionID
+                      && ($0.endedAt.map { $0 > returnedAt } ?? true)
+              })
+        else { return false }
+        return archive.intervals.contains {
+            $0.sessionID == interval.sessionID
+                && $0.kind == .focus
+                && $0.startedAt == returnedAt
+        }
+    }
+
+    func clockOutBeforeTravelReturn(
+        _ interval: ActivityHistoryInterval,
+        at clockedOutAt: Date
+    ) throws {
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        let eventDate = Date()
+        try repository.clockOutBeforeTravelReturn(
+            travelIntervalID: interval.id,
+            clockedOutAt: clockedOutAt,
+            expectedState: state,
+            correctedAt: eventDate
+        )
+        refreshTodayHistory()
+        exportConfiguredHistory(
+            on: [interval.startedAt, interval.endedAt, clockedOutAt].compactMap { $0 },
             at: eventDate
         )
     }
@@ -1049,7 +1094,7 @@ final class AppModel: ObservableObject {
         policy: BreakPolicy,
         at referenceDate: Date
     ) throws {
-        guard scenario == .settingsPrivacy,
+        guard let scenario,
               try repository.completeHistory(exportedAt: referenceDate).sessions.isEmpty,
               let restored = try repository.loadState(),
               restored.phase == .clockedOut
@@ -1058,10 +1103,31 @@ final class AppModel: ObservableObject {
         }
 
         var engine = BreakBarEngine(state: restored, policy: policy)
-        for (command, date) in [
-            (BreakCommand.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
-            (BreakCommand.clockOut, referenceDate.addingTimeInterval(-30 * 60)),
-        ] {
+        let commands: [(BreakCommand, Date)]
+        switch scenario {
+        case .settingsPrivacy:
+            commands = [
+                (.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
+                (.clockOut, referenceDate.addingTimeInterval(-30 * 60)),
+            ]
+        case .overnightTravelCorrection:
+            let today = Calendar.current.startOfDay(for: referenceDate)
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+            let clockedInAt = yesterday.addingTimeInterval(16 * 60 * 60)
+            let travelStartsAt = yesterday.addingTimeInterval(20 * 60 * 60)
+            let travelEndsAt = yesterday.addingTimeInterval(21 * 60 * 60)
+            let travel = BreakCalendarConstraint(
+                id: "ui-test-travel", startAt: travelStartsAt,
+                endAt: travelEndsAt, kind: .travel
+            )
+            commands = [
+                (.clockIn, clockedInAt),
+                (.updateCalendarConstraints([travel]), clockedInAt),
+                (.tick, travelStartsAt),
+                (.returnHome, referenceDate.addingTimeInterval(-10 * 60)),
+            ]
+        }
+        for (command, date) in commands {
             let previous = engine.state
             var candidate = engine
             guard candidate.handle(command, at: date) == .changed else { continue }

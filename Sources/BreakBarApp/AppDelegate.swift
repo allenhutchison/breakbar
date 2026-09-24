@@ -42,7 +42,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         updateStatusItem()
 
         if launchConfiguration.isUITestMode {
-            showSettings()
+            switch launchConfiguration.uiTestScenario {
+            case .settingsPrivacy:
+                showSettings()
+            case .overnightTravelCorrection:
+                model.showTodayHistory()
+            case nil:
+                break
+            }
             return
         }
 
