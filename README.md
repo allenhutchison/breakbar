@@ -39,6 +39,8 @@ BUSY Bar support is optional and disabled by default. Connect the device over US
 
 When activity resumes after the Mac has been idle for the configured threshold while BreakBar is clocked out, a one-time **Ready to work?** prompt offers to clock in. Choosing **Not yet** dismisses the prompt until another qualifying idle-and-return cycle; BreakBar never backdates the clock-in time.
 
+When you return after being idle while clocked in, choose **Lunch**, **Break**, **Meeting**, **Other away**, or **Count as work** in the return prompt or menu-bar popover. **Meeting** records the time from your last input until your return as meeting time, then starts a fresh focus cycle. You can also change a completed interval to **Meeting** in **Today’s history**.
+
 Connect and select calendars in **Settings** to let BreakBar plan around meetings, lunch, and travel. A calendar conflict can move a break, but planning never moves its deadline beyond the 75-minute maximum seated interval. An in-progress meeting still suppresses interruption and receives a fresh warning after it ends; an explicit **5 more minutes** deferral remains authoritative. Lunch matching is case-insensitive and requires `Lunch` as a complete word in the event title, so a title such as `Lunchroom planning` does not match. BreakBar prompts at the event start without automatically changing your activity; choose **Start lunch** to pause break enforcement or **Keep working** to dismiss that occurrence. If an unclassified idle interval overlaps lunch, the return prompt marks Lunch as the suggested classification.
 
 Open **Today’s history** from the chart button in the menu-bar popover to see clocked-in time, working time, category totals, and the day’s activity timeline. Ongoing intervals update in place, and activity crossing midnight is counted only within the current local day. Calendar, detected-call, manual, and offsite meetings are recorded separately from focus time. Select the active work session to correct its clock-in time; if its initial focus interval is still active, the countdown is recalculated from the corrected start. Completed work sessions allow both clock-in and clock-out corrections, and completed timeline entries allow category, start-time, and end-time corrections. BreakBar rejects invalid or overlapping times, adjusts boundary activities when session times change, recalculates the summary immediately, and marks corrected entries as edited.
@@ -58,7 +60,7 @@ make test
 make build
 ```
 
-Run the macOS Settings and privacy acceptance smoke test in an isolated app
+Run the macOS Settings/privacy and away-classification acceptance tests in an isolated app
 bundle and temporary database:
 
 ```sh

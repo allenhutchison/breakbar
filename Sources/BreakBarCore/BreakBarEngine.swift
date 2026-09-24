@@ -279,6 +279,8 @@ public struct BreakBarEngine: Sendable {
             reason = .classifyAwayAsBreak
         case .otherAway:
             reason = .classifyAwayAsOther
+        case .meeting:
+            reason = .classifyAwayAsMeeting
         case .countAsWork:
             preconditionFailure("Count-as-work classification returned early")
         }

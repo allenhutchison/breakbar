@@ -9,6 +9,7 @@ struct AppLaunchConfiguration: Equatable {
 
     enum UITestScenario: String, Equatable {
         case settingsPrivacy = "settings-privacy"
+        case awayClassification = "away-classification"
     }
 
     static let uiTestReferenceDate = Date(timeIntervalSince1970: 1_700_000_000)

@@ -171,6 +171,7 @@ private struct AwayClassificationButtons: View {
                 classification: .lunch
             )
             classificationButton("Break", tone: .breakTime, classification: .breakTime)
+            classificationButton("Meeting", tone: .meeting, classification: .meeting)
             classificationButton("Other away", tone: .away, classification: .otherAway)
             classificationButton("Count as work", tone: .focus, classification: .countAsWork)
         }
