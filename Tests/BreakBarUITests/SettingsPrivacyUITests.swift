@@ -40,8 +40,33 @@ final class SettingsPrivacyUITests: XCTestCase {
         XCTAssertTrue(travelRow.isHittable)
         travelRow.click()
 
+        let clockOutPicker = historyWindow.datePickers["history.travel-clock-out-picker"]
+        XCTAssertTrue(clockOutPicker.waitForExistence(timeout: 3))
+        let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: Date()))
+        let calendar = Calendar.current
+        for (position, value) in [
+            (0.06, String(calendar.component(.month, from: yesterday))),
+            (0.17, String(calendar.component(.day, from: yesterday))),
+            (0.34, String(calendar.component(.year, from: yesterday))),
+            (0.57, "9"),
+            (0.68, "00"),
+            (0.81, "PM"),
+        ] {
+            clockOutPicker.coordinate(
+                withNormalizedOffset: CGVector(dx: position, dy: 0.5)
+            ).click()
+            clockOutPicker.typeText(value)
+        }
+        historyWindow.staticTexts["Forgot to clock out after travel?"].click()
+
+        let clockOutButton = historyWindow.buttons["End previous work session"]
+        XCTAssertTrue(clockOutButton.isEnabled, historyWindow.debugDescription)
+        clockOutButton.click()
         XCTAssertTrue(
-            historyWindow.buttons["End previous work session"].waitForExistence(timeout: 3)
+            historyWindow.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH 'Travel,' AND label CONTAINS '1 hours'")
+            ).firstMatch.waitForExistence(timeout: 5),
+            historyWindow.debugDescription
         )
     }
 

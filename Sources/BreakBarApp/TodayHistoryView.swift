@@ -566,6 +566,7 @@ private struct HistoryCorrectionView: View {
                         in: interval.startedAt ... returnedAt,
                         displayedComponents: [.date, .hourAndMinute]
                     )
+                    .accessibilityIdentifier("history.travel-clock-out-picker")
                     Button("End previous work session") {
                         saveTravelClockOut()
                     }
