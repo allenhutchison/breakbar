@@ -892,7 +892,14 @@ public final class SessionRepository {
             try withStatement(
                 """
                 UPDATE work_sessions
-                SET ended_at_utc = ?, updated_at_utc = ?
+                SET ended_at_utc = ?,
+                    corrected_from_started_at_utc = COALESCE(
+                        corrected_from_started_at_utc, started_at_utc
+                    ),
+                    corrected_from_ended_at_utc = COALESCE(
+                        corrected_from_ended_at_utc, ended_at_utc
+                    ),
+                    updated_at_utc = ?
                 WHERE id = ?
                 """
             ) { statement in

@@ -642,7 +642,9 @@ final class SessionRepositoryTests: XCTestCase {
             let nextDay = try repository.dailyHistory(on: returnedAt, calendar: utcCalendar)
             XCTAssertEqual(previousDay.sessions.count, 1)
             XCTAssertEqual(previousDay.sessions[0].endedAt, clockedOutAt)
+            XCTAssertEqual(previousDay.sessions[0].correctedFromStartedAt, day)
             XCTAssertNil(previousDay.sessions[0].correctedFromEndedAt)
+            XCTAssertTrue(previousDay.sessions[0].wasCorrected)
             XCTAssertEqual(previousDay.intervals.last?.kind, .travel)
             XCTAssertEqual(previousDay.intervals.last?.endedAt, clockedOutAt)
             XCTAssertEqual(previousDay.summary(at: correctedAt).clockedIn, 90 * 60)
@@ -716,6 +718,9 @@ final class SessionRepositoryTests: XCTestCase {
             let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
             XCTAssertEqual(history.sessions.count, 2)
             XCTAssertEqual(history.sessions[0].endedAt, origin.addingTimeInterval(250))
+            XCTAssertEqual(history.sessions[0].correctedFromStartedAt, origin)
+            XCTAssertEqual(history.sessions[0].correctedFromEndedAt, origin.addingTimeInterval(400))
+            XCTAssertTrue(history.sessions[0].wasCorrected)
             XCTAssertEqual(history.sessions[1].startedAt, origin.addingTimeInterval(300))
             XCTAssertEqual(history.sessions[1].endedAt, origin.addingTimeInterval(400))
             XCTAssertEqual(history.intervals.map(\.sessionID), [
@@ -726,6 +731,18 @@ final class SessionRepositoryTests: XCTestCase {
             XCTAssertEqual(history.summary(at: origin.addingTimeInterval(500)).travel, 150)
             XCTAssertEqual(try repository.stats().openSessions, 0)
             XCTAssertEqual(try repository.loadState(), engine.state)
+
+            try repository.correctWorkSession(
+                id: history.sessions[0].id,
+                startedAt: origin,
+                endedAt: origin.addingTimeInterval(260),
+                correctedAt: origin.addingTimeInterval(600)
+            )
+            let correctedAgain = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+            XCTAssertEqual(
+                correctedAgain.sessions[0].correctedFromEndedAt,
+                origin.addingTimeInterval(400)
+            )
         }
     }
 
