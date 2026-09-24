@@ -852,7 +852,7 @@ Daily bucketing follows the user’s local time zone. Intervals crossing midnigh
 | Mac sleeps | Reconcile elapsed time on wake; classify long inactivity; avoid stale alarms |
 | Network/VPN falsely implies home | Require event chain end plus trusted local evidence; provide manual `Still Away` |
 | Screensaver launch fails | Break still starts; log and show a non-blocking diagnostic |
-| User forgets to clock out | Suggest correction next launch; never silently create a multi-day working interval |
+| User forgets to clock out after travel | Let the user end the prior session within the completed travel interval while preserving work recorded after return |
 
 ### 16.1 Escape design
 

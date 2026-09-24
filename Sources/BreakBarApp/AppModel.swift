@@ -363,6 +363,13 @@ final class AppModel: ObservableObject {
         refreshTodayHistory(at: isUITestMode ? now : Date())
     }
 
+    func history(on date: Date) throws -> DailyHistory {
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        return try repository.dailyHistory(on: date)
+    }
+
     func correctHistoryInterval(
         _ interval: ActivityHistoryInterval,
         kind: ActivityKind,
@@ -383,6 +390,37 @@ final class AppModel: ObservableObject {
         refreshTodayHistory()
         exportConfiguredHistory(
             on: [interval.startedAt, interval.endedAt, startedAt, endedAt].compactMap { $0 },
+            at: eventDate
+        )
+    }
+
+    func canClockOutBeforeTravelReturn(_ interval: ActivityHistoryInterval) -> Bool {
+        guard interval.kind == .travel,
+              interval.endedAt != nil,
+              let repository
+        else { return false }
+        return (try? repository.canClockOutBeforeTravelReturn(
+            travelIntervalID: interval.id
+        )) ?? false
+    }
+
+    func clockOutBeforeTravelReturn(
+        _ interval: ActivityHistoryInterval,
+        at clockedOutAt: Date
+    ) throws {
+        guard let repository else {
+            throw SessionRepositoryError.sqlite("The history database is unavailable.")
+        }
+        let eventDate = Date()
+        try repository.clockOutBeforeTravelReturn(
+            travelIntervalID: interval.id,
+            clockedOutAt: clockedOutAt,
+            expectedState: state,
+            correctedAt: eventDate
+        )
+        refreshTodayHistory()
+        exportConfiguredHistory(
+            on: [interval.startedAt, interval.endedAt, clockedOutAt].compactMap { $0 },
             at: eventDate
         )
     }
@@ -1075,6 +1113,22 @@ final class AppModel: ObservableObject {
             commands = [
                 (.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
                 (.clockOut, referenceDate.addingTimeInterval(-30 * 60)),
+            ]
+        case .overnightTravelCorrection:
+            let today = Calendar.current.startOfDay(for: referenceDate)
+            let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: today)!
+            let clockedInAt = yesterday.addingTimeInterval(16 * 60 * 60)
+            let travelStartsAt = yesterday.addingTimeInterval(20 * 60 * 60)
+            let travelEndsAt = yesterday.addingTimeInterval(21 * 60 * 60)
+            let travel = BreakCalendarConstraint(
+                id: "ui-test-travel", startAt: travelStartsAt,
+                endAt: travelEndsAt, kind: .travel
+            )
+            commands = [
+                (.clockIn, clockedInAt),
+                (.updateCalendarConstraints([travel]), clockedInAt),
+                (.tick, travelStartsAt),
+                (.returnHome, referenceDate.addingTimeInterval(-10 * 60)),
             ]
         case .awayClassification:
             commands = [

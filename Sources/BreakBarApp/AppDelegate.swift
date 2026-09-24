@@ -45,6 +45,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             switch launchConfiguration.uiTestScenario {
             case .settingsPrivacy:
                 showSettings()
+            case .overnightTravelCorrection:
+                model.showTodayHistory()
             case .awayClassification:
                 model.presentSeededAwayReturnForUITest()
             case nil:
