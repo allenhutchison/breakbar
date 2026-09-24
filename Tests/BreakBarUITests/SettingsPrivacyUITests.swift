@@ -15,6 +15,8 @@ final class SettingsPrivacyUITests: XCTestCase {
 
         let application = XCUIApplication(url: appURL)
         application.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
             "--ui-test",
             "--ui-test-scenario", "overnight-travel-correction",
             "--ui-test-database", testDirectory.appendingPathComponent("breakbar.sqlite").path,
