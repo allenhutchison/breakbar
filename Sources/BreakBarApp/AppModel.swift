@@ -317,6 +317,9 @@ final class AppModel: ObservableObject {
             applyCurrentCalendarConstraints(at: eventDate)
             applyCurrentCallActivity(at: eventDate)
             _ = apply(.tick, at: eventDate)
+            if isUITestMode {
+                showTodayHistory()
+            }
         }
     }
 

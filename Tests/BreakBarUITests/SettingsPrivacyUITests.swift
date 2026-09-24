@@ -32,6 +32,22 @@ final class SettingsPrivacyUITests: XCTestCase {
         meetingButton.click()
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: meetingButton)
         waitForExpectations(timeout: 5)
+
+        let historyWindow = application.windows["Today"]
+        XCTAssertTrue(historyWindow.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            historyWindow.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == 'Meetings, 1 minutes'"))
+                .firstMatch
+                .waitForExistence(timeout: 5),
+            historyWindow.debugDescription
+        )
+        XCTAssertTrue(
+            historyWindow.descendants(matching: .any)
+                .matching(NSPredicate(format: "label BEGINSWITH 'Meeting,'"))
+                .firstMatch
+                .waitForExistence(timeout: 5)
+        )
     }
 
     @MainActor
