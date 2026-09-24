@@ -3,6 +3,76 @@ import XCTest
 
 final class SettingsPrivacyUITests: XCTestCase {
     @MainActor
+    func testPreviousDayTravelOffersPriorSessionClockOut() throws {
+        let appURL = ProcessInfo.processInfo.environment["BREAKBAR_UI_TEST_APP"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Self.defaultAppURL
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appURL.path))
+
+        let testDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BreakBarUITests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: testDirectory, withIntermediateDirectories: true)
+
+        let application = XCUIApplication(url: appURL)
+        application.launchArguments = [
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US",
+            "--ui-test",
+            "--ui-test-scenario", "overnight-travel-correction",
+            "--ui-test-database", testDirectory.appendingPathComponent("breakbar.sqlite").path,
+        ]
+        application.launch()
+        defer {
+            application.terminate()
+            try? FileManager.default.removeItem(at: testDirectory)
+        }
+        continueAfterFailure = false
+
+        let historyWindow = application.windows["History"]
+        XCTAssertTrue(historyWindow.waitForExistence(timeout: 5))
+        historyWindow.buttons["Previous day"].click()
+
+        let travelRow = historyWindow.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "history.interval.travel.")
+        ).firstMatch
+        XCTAssertTrue(travelRow.waitForExistence(timeout: 3))
+        for _ in 0 ..< 8 where !travelRow.isHittable {
+            historyWindow.scrollViews.firstMatch.swipeUp()
+        }
+        XCTAssertTrue(travelRow.isHittable)
+        travelRow.click()
+
+        let clockOutPicker = historyWindow.datePickers["history.travel-clock-out-picker"]
+        XCTAssertTrue(clockOutPicker.waitForExistence(timeout: 3))
+        let yesterday = try XCTUnwrap(Calendar.current.date(byAdding: .day, value: -1, to: Date()))
+        let calendar = Calendar.current
+        for (position, value) in [
+            (0.06, String(calendar.component(.month, from: yesterday))),
+            (0.17, String(calendar.component(.day, from: yesterday))),
+            (0.34, String(calendar.component(.year, from: yesterday))),
+            (0.57, "9"),
+            (0.68, "00"),
+            (0.81, "PM"),
+        ] {
+            clockOutPicker.coordinate(
+                withNormalizedOffset: CGVector(dx: position, dy: 0.5)
+            ).click()
+            clockOutPicker.typeText(value)
+        }
+        historyWindow.staticTexts["Forgot to clock out after travel?"].click()
+
+        let clockOutButton = historyWindow.buttons["End previous work session"]
+        XCTAssertTrue(clockOutButton.isEnabled, historyWindow.debugDescription)
+        clockOutButton.click()
+        XCTAssertTrue(
+            historyWindow.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH 'Travel,' AND label CONTAINS '1 hours'")
+            ).firstMatch.waitForExistence(timeout: 5),
+            historyWindow.debugDescription
+        )
+    }
+
+    @MainActor
     func testAwayReturnOffersMeetingClassification() throws {
         let appURL = ProcessInfo.processInfo.environment["BREAKBAR_UI_TEST_APP"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -33,7 +103,7 @@ final class SettingsPrivacyUITests: XCTestCase {
         expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: meetingButton)
         waitForExpectations(timeout: 5)
 
-        let historyWindow = application.windows["Today"]
+        let historyWindow = application.windows["History"]
         XCTAssertTrue(historyWindow.waitForExistence(timeout: 5))
         XCTAssertTrue(
             historyWindow.descendants(matching: .any)
