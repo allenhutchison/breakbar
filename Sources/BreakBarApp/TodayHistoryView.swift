@@ -4,7 +4,7 @@ import SwiftUI
 struct TodayHistoryView: View {
     @ObservedObject var model: AppModel
     @State private var historyEditor: HistoryEditor?
-    @State private var selectedDate = Date()
+    @State private var selectedPastDate: Date?
     @State private var selectedDayHistory: DailyHistory?
     @State private var selectedDayError: String?
 
@@ -33,15 +33,16 @@ struct TodayHistoryView: View {
     }
 
     private var showingToday: Bool {
-        Calendar.current.isDate(selectedDate, inSameDayAs: Date())
+        selectedPastDate == nil
     }
 
     private func refreshSelectedDay() {
         if showingToday {
             model.refreshTodayHistory()
         } else {
+            guard let selectedPastDate else { return }
             do {
-                selectedDayHistory = try model.history(on: selectedDate)
+                selectedDayHistory = try model.history(on: selectedPastDate)
                 selectedDayError = nil
             } catch {
                 selectedDayHistory = nil
@@ -51,10 +52,13 @@ struct TodayHistoryView: View {
     }
 
     private func moveDay(by days: Int) {
-        guard let date = Calendar.current.date(byAdding: .day, value: days, to: selectedDate),
+        let today = Date()
+        guard let date = Calendar.current.date(
+            byAdding: .day, value: days, to: selectedPastDate ?? today
+        ),
               Calendar.current.startOfDay(for: date)
-                <= Calendar.current.startOfDay(for: Date()) else { return }
-        selectedDate = date
+                <= Calendar.current.startOfDay(for: today) else { return }
+        selectedPastDate = Calendar.current.isDate(date, inSameDayAs: today) ? nil : date
         refreshSelectedDay()
     }
 
