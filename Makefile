@@ -16,6 +16,7 @@ APP_FRAMEWORKS = $(APP_CONTENTS)/Frameworks
 APP_RESOURCES = $(APP_CONTENTS)/Resources
 APP_ICON_SOURCE = $(CURDIR)/Support/AppIcon.png
 APP_ICON = $(CURDIR)/.build/AppIcon.icns
+APP_ICON_ASSETS = $(CURDIR)/.build/Assets.car
 BUNDLE_IDENTIFIER ?= app.breakbar.mac
 BUNDLE_DISPLAY_NAME ?= BreakBar
 UI_TEST_APP_BUNDLE = $(CURDIR)/.build/BreakBarUITest.app
@@ -32,7 +33,7 @@ build:
 	$(SWIFT_ENV) swift build $(SWIFT_PATHS) --configuration $(CONFIGURATION)
 
 $(APP_ICON): $(APP_ICON_SOURCE) $(CURDIR)/scripts/generate-app-icon.sh
-	$(CURDIR)/scripts/generate-app-icon.sh $(APP_ICON_SOURCE) $(APP_ICON)
+	DEVELOPER_DIR=$(DEVELOPER_DIR) $(CURDIR)/scripts/generate-app-icon.sh $(APP_ICON_SOURCE) $(APP_ICON)
 
 bundle: build $(APP_ICON)
 	rm -rf $(APP_BUNDLE)
@@ -43,6 +44,7 @@ bundle: build $(APP_ICON)
 	cp $(SWIFT_PROTOBUF_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/SwiftProtobuf.txt
 	cp $(BUSY_PROTOBUF_LICENSE_SOURCE) $(APP_RESOURCES)/ThirdPartyLicenses/BUSYProtobuf.txt
 	cp $(APP_ICON) $(APP_RESOURCES)/AppIcon.icns
+	cp $(APP_ICON_ASSETS) $(APP_RESOURCES)/Assets.car
 	cp $(CURDIR)/Support/Info.plist $(APP_CONTENTS)/Info.plist
 	plutil -replace CFBundleIdentifier -string "$(BUNDLE_IDENTIFIER)" $(APP_CONTENTS)/Info.plist
 	plutil -replace CFBundleDisplayName -string "$(BUNDLE_DISPLAY_NAME)" $(APP_CONTENTS)/Info.plist
