@@ -10,6 +10,7 @@ struct AppLaunchConfiguration: Equatable {
     enum UITestScenario: String, Equatable {
         case settingsPrivacy = "settings-privacy"
         case overnightTravelCorrection = "overnight-travel-correction"
+        case awayClassification = "away-classification"
     }
 
     static let uiTestReferenceDate = Date(timeIntervalSince1970: 1_700_000_000)
@@ -37,7 +38,7 @@ struct AppLaunchConfiguration: Equatable {
 
     var referenceDate: Date? {
         switch mode {
-        case .uiTest(.settingsPrivacy): Self.uiTestReferenceDate
+        case .uiTest(.settingsPrivacy), .uiTest(.awayClassification): Self.uiTestReferenceDate
         case .uiTest(.overnightTravelCorrection): Date()
         case .standard, .demo: nil
         }

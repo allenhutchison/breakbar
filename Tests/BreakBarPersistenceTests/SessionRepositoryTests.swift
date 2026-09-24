@@ -344,10 +344,11 @@ final class SessionRepositoryTests: XCTestCase {
     }
 
     func testAwayClassificationsRewriteHistoryAndStartFreshFocus() throws {
-        let cases: [(AwayClassification, focus: Int, breaks: Int, lunches: Int, away: Int)] = [
-            (.lunch, 2, 0, 1, 0),
-            (.breakTime, 2, 1, 0, 0),
-            (.otherAway, 2, 0, 0, 1),
+        let cases: [(AwayClassification, focus: Int, breaks: Int, lunches: Int, meetings: Int, away: Int)] = [
+            (.lunch, 2, 0, 1, 0, 0),
+            (.breakTime, 2, 1, 0, 0, 0),
+            (.meeting, 2, 0, 0, 1, 0),
+            (.otherAway, 2, 0, 0, 0, 1),
         ]
 
         for testCase in cases {
@@ -380,8 +381,17 @@ final class SessionRepositoryTests: XCTestCase {
                 XCTAssertEqual(stats.focusIntervals, testCase.focus)
                 XCTAssertEqual(stats.breakIntervals, testCase.breaks)
                 XCTAssertEqual(stats.lunchIntervals, testCase.lunches)
+                XCTAssertEqual(stats.meetingIntervals, testCase.meetings)
                 XCTAssertEqual(stats.awayIntervals, testCase.away)
                 XCTAssertEqual(engine.state.phaseStartedAt, origin.addingTimeInterval(80))
+
+                if testCase.0 == .meeting {
+                    let history = try repository.dailyHistory(on: origin, calendar: utcCalendar)
+                    XCTAssertEqual(history.intervals.map(\.kind), [.focus, .meeting, .focus])
+                    XCTAssertEqual(history.intervals[1].startedAt, origin.addingTimeInterval(20))
+                    XCTAssertEqual(history.intervals[1].endedAt, origin.addingTimeInterval(80))
+                    XCTAssertEqual(history.summary(at: origin.addingTimeInterval(85)).meetings, 60)
+                }
             }
         }
     }

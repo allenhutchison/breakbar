@@ -47,6 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
                 showSettings()
             case .overnightTravelCorrection:
                 model.showTodayHistory()
+            case .awayClassification:
+                model.presentSeededAwayReturnForUITest()
             case nil:
                 break
             }

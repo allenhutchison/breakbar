@@ -242,11 +242,11 @@ V1 does not force lunch merely because a calendar event starts while the user re
 After the configured idle threshold, BreakBar tentatively enters `AWAY_UNCLASSIFIED` and retroactively starts that interval at the last observed input time. A connected Bar shows `AWAY`. On return, the menu presents:
 
 > You were away for 48 minutes.  
-> **Lunch · Break · Other away · Count as work**
+> **Lunch · Break · Meeting · Other away · Count as work**
 
 If the interval overlaps a classified lunch event, `Lunch` is preselected. If it overlaps travel, travel rules take precedence and no ambiguous prompt is shown. A deliberately started break is already classified and never generates this prompt.
 
-`Count as work` restores the interval as focus or meeting according to contemporaneous evidence. `Break` counts as a break but does not fabricate start/return enforcement history. `Other away` remains inside the clocked-in span but is excluded from actual working time.
+`Meeting` records the idle interval as meeting time, ending at the detected return, then starts a fresh focus cycle. `Count as work` restores the interval as focus according to the current implementation. `Break` counts as a break but does not fabricate start/return enforcement history. `Other away` remains inside the clocked-in span but is excluded from actual working time.
 
 ### 5.10 Travel and offsite meetings
 

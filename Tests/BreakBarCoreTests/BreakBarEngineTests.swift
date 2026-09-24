@@ -734,6 +734,30 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.lastTransitionReason, .classifyAwayAsLunch)
     }
 
+    func testMeetingClassificationRequiresReturnAndStartsFreshFocusCycle() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(
+            .idleThresholdReached(idleStartedAt: origin.addingTimeInterval(20)),
+            at: origin.addingTimeInterval(30)
+        )
+        XCTAssertEqual(
+            engine.handle(.classifyAway(.meeting), at: origin.addingTimeInterval(70)),
+            .unchanged
+        )
+
+        let returnedAt = origin.addingTimeInterval(80)
+        _ = engine.handle(.userActivityResumed, at: returnedAt)
+        XCTAssertEqual(
+            engine.handle(.classifyAway(.meeting), at: origin.addingTimeInterval(85)),
+            .changed
+        )
+        XCTAssertEqual(engine.state.phase, .focusing)
+        XCTAssertEqual(engine.state.phaseStartedAt, returnedAt)
+        XCTAssertEqual(engine.state.focusDueAt, returnedAt.addingTimeInterval(60))
+        XCTAssertEqual(engine.state.lastTransitionReason, .classifyAwayAsMeeting)
+    }
+
     func testCountAsWorkRestoresOriginalSeatedCycle() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)
