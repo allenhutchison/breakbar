@@ -42,6 +42,7 @@ public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
     case classifyAwayAsLunch
     case classifyAwayAsBreak
     case classifyAwayAsOther
+    case classifyAwayAsMeeting
     case classifyAwayAsWork
     case travelPlanUpdated
     case travelWarningStarted
@@ -67,6 +68,7 @@ public enum AwayClassification: String, Codable, Equatable, Sendable {
     case lunch
     case breakTime
     case otherAway
+    case meeting
     case countAsWork
 }
 

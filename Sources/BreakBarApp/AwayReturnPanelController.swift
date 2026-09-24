@@ -27,7 +27,7 @@ final class AwayReturnPanelController {
             classify: classify,
             clockOut: clockOut
         )
-        let panelSize = NSSize(width: 410, height: 420)
+        let panelSize = NSSize(width: 410, height: 470)
         let panel = AwayReturnPanel(
             contentRect: NSRect(origin: .zero, size: panelSize),
             styleMask: [.titled, .fullSizeContentView],
@@ -156,6 +156,9 @@ private struct AwayReturnPanelView: View {
             classificationButton("Break", color: breakAccent) {
                 state.classify(.breakTime)
             }
+            classificationButton("Meeting", color: meetingAccent) {
+                state.classify(.meeting)
+            }
             classificationButton("Other away", color: awayAccent) {
                 state.classify(.otherAway)
             }
@@ -168,7 +171,7 @@ private struct AwayReturnPanelView: View {
                 .foregroundStyle(.secondary)
         }
         .padding(22)
-        .frame(width: 410, height: 420)
+        .frame(width: 410, height: 470)
         .background(.ultraThinMaterial)
     }
 
@@ -196,6 +199,7 @@ private struct AwayReturnPanelView: View {
 
     private var lunchAccent: Color { Color(red: 0.90, green: 0.45, blue: 0.16) }
     private var breakAccent: Color { Color(red: 0.12, green: 0.64, blue: 0.48) }
+    private var meetingAccent: Color { Color(red: 0.48, green: 0.35, blue: 0.77) }
     private var awayAccent: Color { Color(red: 0.42, green: 0.44, blue: 0.50) }
     private var workAccent: Color { Color(red: 0.16, green: 0.47, blue: 0.88) }
 }

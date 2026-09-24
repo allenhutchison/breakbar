@@ -281,6 +281,14 @@ public final class SessionRepository {
                         startedAt: returnedAt,
                         minimumSatisfiedAt: nil
                     )
+                case .classifyAwayAsMeeting:
+                    try resolveOpenAwayInterval(as: "meeting", endedAt: returnedAt)
+                    try insertInterval(
+                        sessionID: sessionID,
+                        phase: .focusing,
+                        startedAt: returnedAt,
+                        minimumSatisfiedAt: nil
+                    )
                 case .classifyAwayAsWork:
                     try restoreFocusAcrossOpenAwayInterval(sessionID: sessionID)
                 default:

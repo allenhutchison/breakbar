@@ -3,6 +3,54 @@ import XCTest
 
 final class SettingsPrivacyUITests: XCTestCase {
     @MainActor
+    func testAwayReturnOffersMeetingClassification() throws {
+        let appURL = ProcessInfo.processInfo.environment["BREAKBAR_UI_TEST_APP"]
+            .map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? Self.defaultAppURL
+        XCTAssertTrue(FileManager.default.fileExists(atPath: appURL.path))
+
+        let testDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BreakBarUITests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: testDirectory, withIntermediateDirectories: true)
+
+        let application = XCUIApplication(url: appURL)
+        application.launchArguments = [
+            "--ui-test",
+            "--ui-test-scenario", "away-classification",
+            "--ui-test-database", testDirectory.appendingPathComponent("breakbar.sqlite").path,
+        ]
+        application.launch()
+        defer {
+            application.terminate()
+            try? FileManager.default.removeItem(at: testDirectory)
+        }
+        continueAfterFailure = false
+
+        let meetingButton = application.buttons["Meeting"]
+        XCTAssertTrue(meetingButton.waitForExistence(timeout: 5))
+        XCTAssertTrue(meetingButton.isHittable)
+        meetingButton.click()
+        expectation(for: NSPredicate(format: "exists == false"), evaluatedWith: meetingButton)
+        waitForExpectations(timeout: 5)
+
+        let historyWindow = application.windows["Today"]
+        XCTAssertTrue(historyWindow.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            historyWindow.descendants(matching: .any)
+                .matching(NSPredicate(format: "label == 'Meetings, 1 minutes'"))
+                .firstMatch
+                .waitForExistence(timeout: 5),
+            historyWindow.debugDescription
+        )
+        XCTAssertTrue(
+            historyWindow.descendants(matching: .any)
+                .matching(NSPredicate(format: "label BEGINSWITH 'Meeting,'"))
+                .firstMatch
+                .waitForExistence(timeout: 5)
+        )
+    }
+
+    @MainActor
     func testSettingsPrivacyExplanationAndDeletionFlow() throws {
         let environment = ProcessInfo.processInfo.environment
         let appURL = environment["BREAKBAR_UI_TEST_APP"]

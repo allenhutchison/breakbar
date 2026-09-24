@@ -312,11 +312,14 @@ final class AppModel: ObservableObject {
     }
 
     func classifyAway(as classification: AwayClassification) {
-        let eventDate = Date()
+        let eventDate = isUITestMode ? now : Date()
         if apply(.classifyAway(classification), at: eventDate) == .changed {
             applyCurrentCalendarConstraints(at: eventDate)
             applyCurrentCallActivity(at: eventDate)
             _ = apply(.tick, at: eventDate)
+            if isUITestMode {
+                showTodayHistory()
+            }
         }
     }
 
@@ -357,7 +360,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshTodayHistory() {
-        refreshTodayHistory(at: Date())
+        refreshTodayHistory(at: isUITestMode ? now : Date())
     }
 
     func correctHistoryInterval(
@@ -851,6 +854,12 @@ final class AppModel: ObservableObject {
         synchronizeWindows(at: eventDate, bringReturnPanelToFront: true)
     }
 
+    func presentSeededAwayReturnForUITest() {
+        guard isUITestMode, state.phase == .awayUnclassified,
+              state.awayReturnDetectedAt != nil else { return }
+        synchronizeWindows(at: now, bringReturnPanelToFront: true)
+    }
+
     private func tick() {
         let eventDate = Date()
         let displayedText = presentation.shortLabel
@@ -880,6 +889,7 @@ final class AppModel: ObservableObject {
     }
 
     private func calendarConstraintsChanged(_ constraints: [BreakCalendarConstraint]) {
+        guard !isUITestMode else { return }
         let eventDate = Date()
         _ = apply(.updateCalendarConstraints(constraints), at: eventDate)
         _ = applyCurrentCallActivity(at: eventDate)
@@ -887,6 +897,7 @@ final class AppModel: ObservableObject {
     }
 
     private func callActivityChanged(_ signal: BreakCallSignal?) {
+        guard !isUITestMode else { return }
         let eventDate = Date()
         _ = applyCurrentCallActivity(rawSignal: signal, at: eventDate)
         _ = applyCurrentCalendarConstraints(at: eventDate)
@@ -1049,7 +1060,7 @@ final class AppModel: ObservableObject {
         policy: BreakPolicy,
         at referenceDate: Date
     ) throws {
-        guard scenario == .settingsPrivacy,
+        guard let scenario,
               try repository.completeHistory(exportedAt: referenceDate).sessions.isEmpty,
               let restored = try repository.loadState(),
               restored.phase == .clockedOut
@@ -1058,10 +1069,24 @@ final class AppModel: ObservableObject {
         }
 
         var engine = BreakBarEngine(state: restored, policy: policy)
-        for (command, date) in [
-            (BreakCommand.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
-            (BreakCommand.clockOut, referenceDate.addingTimeInterval(-30 * 60)),
-        ] {
+        let commands: [(BreakCommand, Date)]
+        switch scenario {
+        case .settingsPrivacy:
+            commands = [
+                (.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
+                (.clockOut, referenceDate.addingTimeInterval(-30 * 60)),
+            ]
+        case .awayClassification:
+            commands = [
+                (.clockIn, referenceDate.addingTimeInterval(-60 * 60)),
+                (
+                    .idleThresholdReached(idleStartedAt: referenceDate.addingTimeInterval(-120)),
+                    referenceDate.addingTimeInterval(-60)
+                ),
+                (.userActivityResumed, referenceDate.addingTimeInterval(-1)),
+            ]
+        }
+        for (command, date) in commands {
             let previous = engine.state
             var candidate = engine
             guard candidate.handle(command, at: date) == .changed else { continue }
@@ -1362,7 +1387,7 @@ final class AppModel: ObservableObject {
             engine = candidate
             state = candidate.state
             lastMessage = nil
-            refreshTodayHistory()
+            refreshTodayHistory(at: eventDate)
             if previousState.phase != .clockedOut, state.phase == .clockedOut {
                 exportConfiguredHistory(on: eventDate)
             }
