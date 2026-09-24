@@ -616,6 +616,8 @@ final class SessionRepositoryTests: XCTestCase {
 
             let original = try repository.dailyHistory(on: returnedAt, calendar: utcCalendar)
             let interval = try XCTUnwrap(original.intervals.first { $0.kind == .travel })
+            XCTAssertTrue(try repository.canClockOutBeforeTravelReturn(travelIntervalID: interval.id))
+            XCTAssertFalse(try repository.canClockOutBeforeTravelReturn(travelIntervalID: "missing"))
             XCTAssertEqual(original.summary(at: correctedAt).travel, returnedAt.timeIntervalSince(original.day.start))
 
             XCTAssertThrowsError(
@@ -647,6 +649,7 @@ final class SessionRepositoryTests: XCTestCase {
                 expectedState: engine.state,
                 correctedAt: correctedAt
             )
+            XCTAssertFalse(try repository.canClockOutBeforeTravelReturn(travelIntervalID: interval.id))
 
             let previousDay = try repository.dailyHistory(on: day, calendar: utcCalendar)
             let nextDay = try repository.dailyHistory(on: returnedAt, calendar: utcCalendar)
@@ -718,6 +721,7 @@ final class SessionRepositoryTests: XCTestCase {
                 repository.dailyHistory(on: origin, calendar: utcCalendar)
                     .intervals.first { $0.kind == .travel }
             )
+            XCTAssertTrue(try repository.canClockOutBeforeTravelReturn(travelIntervalID: travelInterval.id))
             try repository.clockOutBeforeTravelReturn(
                 travelIntervalID: travelInterval.id,
                 clockedOutAt: origin.addingTimeInterval(250),

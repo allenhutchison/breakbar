@@ -103,6 +103,14 @@ public struct SessionRepositoryStats: Equatable, Sendable {
 public final class SessionRepository {
     public static let schemaVersion = 6
 
+    private struct TravelCorrectionCandidate {
+        let sessionID: String
+        let startedAt: Date
+        let returnedAt: Date
+        let sessionStartedAt: Date
+        let sessionEndedAt: Date?
+    }
+
     private var database: OpaquePointer?
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
@@ -808,6 +816,65 @@ public final class SessionRepository {
         }
     }
 
+    public func canClockOutBeforeTravelReturn(travelIntervalID: String) throws -> Bool {
+        try travelCorrectionCandidate(travelIntervalID: travelIntervalID) != nil
+    }
+
+    private func travelCorrectionCandidate(
+        travelIntervalID: String
+    ) throws -> TravelCorrectionCandidate? {
+        let travel: TravelCorrectionCandidate? = try withStatement(
+            """
+            SELECT i.session_id, i.started_at_utc, i.ended_at_utc,
+                   s.started_at_utc, s.ended_at_utc
+            FROM intervals i
+            JOIN work_sessions s ON s.id = i.session_id
+            WHERE i.id = ? AND i.kind = 'travel' AND i.ended_at_utc IS NOT NULL
+            """
+        ) { statement in
+            try bind(travelIntervalID, to: statement, at: 1)
+            guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            return TravelCorrectionCandidate(
+                sessionID: String(cString: sqlite3_column_text(statement, 0)),
+                startedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
+                returnedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
+                sessionStartedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+                sessionEndedAt: optionalDate(in: statement, at: 4)
+            )
+        }
+        guard let travel,
+              travel.sessionEndedAt.map({ $0 > travel.returnedAt }) ?? true
+        else { return nil }
+
+        let resumedFocusCount: Int = try withStatement(
+            """
+            SELECT COUNT(*) FROM intervals
+            WHERE session_id = ? AND kind = 'focus' AND started_at_utc = ?
+            """
+        ) { statement in
+            try bind(travel.sessionID, to: statement, at: 1)
+            try bind(travel.returnedAt, to: statement, at: 2)
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
+            return Int(sqlite3_column_int64(statement, 0))
+        }
+        let laterBoundaryIntervalCount: Int = try withStatement(
+            """
+            SELECT COUNT(*) FROM intervals
+            WHERE session_id = ? AND started_at_utc >= ?
+              AND ((? IS NULL AND ended_at_utc IS NULL) OR ended_at_utc = ?)
+            """
+        ) { statement in
+            try bind(travel.sessionID, to: statement, at: 1)
+            try bind(travel.returnedAt, to: statement, at: 2)
+            try bind(travel.sessionEndedAt, to: statement, at: 3)
+            try bind(travel.sessionEndedAt, to: statement, at: 4)
+            guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
+            return Int(sqlite3_column_int64(statement, 0))
+        }
+        guard resumedFocusCount == 1, laterBoundaryIntervalCount == 1 else { return nil }
+        return travel
+    }
+
     public func clockOutBeforeTravelReturn(
         travelIntervalID: String,
         clockedOutAt: Date,
@@ -819,30 +886,8 @@ public final class SessionRepository {
                 throw SessionRepositoryError.staleState
             }
 
-            let travel: (sessionID: String, startedAt: Date, returnedAt: Date,
-                         sessionStartedAt: Date, sessionEndedAt: Date?)? = try withStatement(
-                """
-                SELECT i.session_id, i.started_at_utc, i.ended_at_utc,
-                       s.started_at_utc, s.ended_at_utc
-                FROM intervals i
-                JOIN work_sessions s ON s.id = i.session_id
-                WHERE i.id = ? AND i.kind = 'travel' AND i.ended_at_utc IS NOT NULL
-                """
-            ) { statement in
-                try bind(travelIntervalID, to: statement, at: 1)
-                guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
-                return (
-                    String(cString: sqlite3_column_text(statement, 0)),
-                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 1)),
-                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
-                    Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
-                    optionalDate(in: statement, at: 4)
-                )
-            }
-            guard let travel else {
-                throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
-            }
-            guard travel.sessionEndedAt.map({ $0 > travel.returnedAt }) ?? true else {
+            guard let travel = try travelCorrectionCandidate(travelIntervalID: travelIntervalID)
+            else {
                 throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
             }
             guard clockedOutAt > travel.startedAt,
@@ -851,35 +896,6 @@ public final class SessionRepository {
                   clockedOutAt <= correctedAt
             else {
                 throw SessionRepositoryError.travelCorrectionOutsideTravelInterval
-            }
-
-            let resumedFocusCount: Int = try withStatement(
-                """
-                SELECT COUNT(*) FROM intervals
-                WHERE session_id = ? AND kind = 'focus' AND started_at_utc = ?
-                """
-            ) { statement in
-                try bind(travel.sessionID, to: statement, at: 1)
-                try bind(travel.returnedAt, to: statement, at: 2)
-                guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
-                return Int(sqlite3_column_int64(statement, 0))
-            }
-            let laterBoundaryIntervalCount: Int = try withStatement(
-                """
-                SELECT COUNT(*) FROM intervals
-                WHERE session_id = ? AND started_at_utc >= ?
-                  AND ((? IS NULL AND ended_at_utc IS NULL) OR ended_at_utc = ?)
-                """
-            ) { statement in
-                try bind(travel.sessionID, to: statement, at: 1)
-                try bind(travel.returnedAt, to: statement, at: 2)
-                try bind(travel.sessionEndedAt, to: statement, at: 3)
-                try bind(travel.sessionEndedAt, to: statement, at: 4)
-                guard sqlite3_step(statement) == SQLITE_ROW else { throw lastError() }
-                return Int(sqlite3_column_int64(statement, 0))
-            }
-            guard resumedFocusCount == 1, laterBoundaryIntervalCount == 1 else {
-                throw SessionRepositoryError.travelCorrectionRequiresReturnedFocus
             }
 
             let newSessionID = UUID().uuidString

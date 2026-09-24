@@ -396,19 +396,12 @@ final class AppModel: ObservableObject {
 
     func canClockOutBeforeTravelReturn(_ interval: ActivityHistoryInterval) -> Bool {
         guard interval.kind == .travel,
-              let returnedAt = interval.endedAt,
-              let repository,
-              let archive = try? repository.completeHistory(),
-              archive.sessions.contains(where: {
-                  $0.id == interval.sessionID
-                      && ($0.endedAt.map { $0 > returnedAt } ?? true)
-              })
+              interval.endedAt != nil,
+              let repository
         else { return false }
-        return archive.intervals.contains {
-            $0.sessionID == interval.sessionID
-                && $0.kind == .focus
-                && $0.startedAt == returnedAt
-        }
+        return (try? repository.canClockOutBeforeTravelReturn(
+            travelIntervalID: interval.id
+        )) ?? false
     }
 
     func clockOutBeforeTravelReturn(
