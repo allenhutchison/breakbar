@@ -312,7 +312,7 @@ final class AppModel: ObservableObject {
     }
 
     func classifyAway(as classification: AwayClassification) {
-        let eventDate = Date()
+        let eventDate = isUITestMode ? now : Date()
         if apply(.classifyAway(classification), at: eventDate) == .changed {
             applyCurrentCalendarConstraints(at: eventDate)
             applyCurrentCallActivity(at: eventDate)
@@ -357,7 +357,7 @@ final class AppModel: ObservableObject {
     }
 
     func refreshTodayHistory() {
-        refreshTodayHistory(at: Date())
+        refreshTodayHistory(at: isUITestMode ? now : Date())
     }
 
     func correctHistoryInterval(
@@ -886,6 +886,7 @@ final class AppModel: ObservableObject {
     }
 
     private func calendarConstraintsChanged(_ constraints: [BreakCalendarConstraint]) {
+        guard !isUITestMode else { return }
         let eventDate = Date()
         _ = apply(.updateCalendarConstraints(constraints), at: eventDate)
         _ = applyCurrentCallActivity(at: eventDate)
@@ -893,6 +894,7 @@ final class AppModel: ObservableObject {
     }
 
     private func callActivityChanged(_ signal: BreakCallSignal?) {
+        guard !isUITestMode else { return }
         let eventDate = Date()
         _ = applyCurrentCallActivity(rawSignal: signal, at: eventDate)
         _ = applyCurrentCalendarConstraints(at: eventDate)
@@ -1382,7 +1384,7 @@ final class AppModel: ObservableObject {
             engine = candidate
             state = candidate.state
             lastMessage = nil
-            refreshTodayHistory()
+            refreshTodayHistory(at: eventDate)
             if previousState.phase != .clockedOut, state.phase == .clockedOut {
                 exportConfiguredHistory(on: eventDate)
             }
