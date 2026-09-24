@@ -32,10 +32,13 @@ SIGNING_IDENTITY ?= -
 build:
 	$(SWIFT_ENV) swift build $(SWIFT_PATHS) --configuration $(CONFIGURATION)
 
-$(APP_ICON): $(APP_ICON_SOURCE) $(CURDIR)/scripts/generate-app-icon.sh
+$(APP_ICON_ASSETS): $(APP_ICON_SOURCE) $(CURDIR)/scripts/generate-app-icon.sh
 	DEVELOPER_DIR=$(DEVELOPER_DIR) $(CURDIR)/scripts/generate-app-icon.sh $(APP_ICON_SOURCE) $(APP_ICON)
 
-bundle: build $(APP_ICON)
+$(APP_ICON): $(APP_ICON_ASSETS)
+	@test -f $(APP_ICON) || DEVELOPER_DIR=$(DEVELOPER_DIR) $(CURDIR)/scripts/generate-app-icon.sh $(APP_ICON_SOURCE) $(APP_ICON)
+
+bundle: build $(APP_ICON_ASSETS) $(APP_ICON)
 	rm -rf $(APP_BUNDLE)
 	mkdir -p $(APP_CONTENTS)/MacOS $(APP_FRAMEWORKS) $(APP_RESOURCES)/ThirdPartyLicenses
 	cp $(APP_EXECUTABLE_SOURCE) $(APP_EXECUTABLE)
