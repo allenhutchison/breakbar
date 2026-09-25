@@ -10,7 +10,7 @@ BreakBar 0.9.1 improves how away time and overnight travel appear in your work h
 
 ## Privacy
 
-History stays on your Mac unless you explicitly export it. Calendar access remains read-only, and this release adds no cloud service or collection of personal data.
+History stays on your Mac unless you explicitly export it. BreakBar requests full calendar event access to read selected calendars but never edits events. This release adds no cloud service or collection of personal data.
 
 ## Requirements
 
