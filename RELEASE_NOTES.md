@@ -1,17 +1,16 @@
-# BreakBar 0.9.0
+# BreakBar 0.9.1
 
-BreakBar 0.9.0 adds direct controls for exporting and deleting locally stored history, and improves menu-bar stability.
+BreakBar 0.9.1 improves how away time and overnight travel appear in your work history, and restores the app icon in notifications.
 
 ## Highlights
 
-- Review clear explanations of how BreakBar handles local history, Calendar access, live-meeting detection, and Obsidian exports.
-- Export complete work-session and activity history as versioned JSON.
-- Delete all locally stored history while clocked out, while preserving settings and Obsidian notes.
-- Avoid intermittent crashes caused by menu-bar status rendering.
+- Classify idle time as a meeting when you return, or change a completed activity to a meeting in Today’s history. BreakBar starts a fresh focus cycle after the meeting.
+- Browse earlier days in Today’s history. If you forgot to clock out after travel, end the previous work session during the travel interval while keeping work after your return in a separate session.
+- See the BreakBar app icon in macOS notifications.
 
 ## Privacy
 
-Every integration remains optional. History stays on the Mac unless you explicitly export it, Calendar access remains read-only, and Obsidian updates remain limited to their marked section. Deleting history preserves preferences and existing Obsidian notes. This release adds no cloud service or collection of personal data.
+History stays on your Mac unless you explicitly export it. Calendar access remains read-only, and this release adds no cloud service or collection of personal data.
 
 ## Requirements
 
