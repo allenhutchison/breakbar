@@ -477,6 +477,37 @@ final class SessionRepositoryTests: XCTestCase {
         }
     }
 
+    func testLegacyDeferralRecoveryPersistsBeforeCommittingTransitions() throws {
+        try withRepository { repository, databaseURL in
+            let legacy = BreakBarState(
+                phase: .focusing,
+                enforcement: .warning,
+                phaseStartedAt: origin,
+                nominalFocusDueAt: origin.addingTimeInterval(60),
+                focusDueAt: origin.addingTimeInterval(360),
+                breakPlanReason: .userDeferred,
+                revision: 2
+            )
+            try repository.bootstrapIfNeeded(state: legacy, at: origin)
+            let reopened = try SessionRepository(url: databaseURL)
+            let recovered = try XCTUnwrap(reopened.loadState())
+            XCTAssertEqual(recovered.breakDeferredAt, origin)
+            XCTAssertEqual(recovered.revision, legacy.revision)
+            XCTAssertEqual(try repository.loadState(), recovered)
+            var engine = BreakBarEngine(state: recovered, policy: policy)
+            XCTAssertEqual(engine.state, recovered)
+            try commit(.tick, at: origin.addingTimeInterval(360), engine: &engine, repository: reopened)
+            XCTAssertEqual(engine.state.enforcement, .required)
+            XCTAssertFalse(engine.state.canDeferBreak)
+            try commit(.startBreak, at: origin.addingTimeInterval(361), engine: &engine, repository: reopened)
+            XCTAssertEqual(try reopened.loadState(), engine.state)
+            let again = try SessionRepository(url: databaseURL)
+            XCTAssertEqual(try again.loadState(), engine.state)
+            XCTAssertEqual(try again.stats().focusIntervals, 1)
+            XCTAssertEqual(try again.stats().openIntervals, 1)
+        }
+    }
+
     func testBreakDeferralSurvivesReopenWithoutSplittingFocusHistory() throws {
         try withRepository { repository, databaseURL in
             var engine = BreakBarEngine(policy: policy)
