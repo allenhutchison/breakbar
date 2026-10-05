@@ -186,7 +186,7 @@ At the planned break time, BreakBar displays a full-screen overlay on the active
 
 The overlay is visually dominant, avoids destructive app manipulation, and does not close or alter the user’s work. It blocks ordinary clicks from dismissing it. The menu bar and connected display accessories show `BREAK`.
 
-The overlay always provides visible five-minute deferral and clock-out controls, described in Section 16. It must never imitate a macOS login screen or hide how to regain control.
+The overlay provides a five-minute deferral once per focus cycle and always provides clock-out controls, described in Section 16. It must never imitate a macOS login screen or hide how to regain control.
 
 ### 5.6 Active break: the start/return contract
 
@@ -609,7 +609,7 @@ The overlay:
 - ignores ordinary Escape/click dismissal;
 - exposes accessibility labels and sufficient contrast;
 - displays device-offline fallback instructions when necessary;
-- provides a visible five-minute deferral button;
+- provides a visible five-minute deferral button until it has been used in the current focus cycle;
 - is recreated after display, space, wake, or resolution changes.
 
 macOS prevents third-party apps from creating a truly unbreakable kiosk without elevated management. V1 should be strongly interruptive, not hostile or deceptive.
@@ -859,7 +859,7 @@ Daily bucketing follows the user’s local time zone. Intervals crossing midnigh
 The full-screen overlay includes:
 
 - `BUSY Bar offline? Start break here` when the device cannot be reached;
-- a visible `5 more minutes` button that records the deferral and returns to warning mode;
+- a visible `5 more minutes` button that records the deferral and returns to warning mode once per focus cycle; subsequent prompts hide it, including after app restart;
 - an accessible menu command from the app’s status item;
 - `Clock Out` after confirmation.
 
@@ -950,7 +950,7 @@ Generate random event streams and assert:
 
 - VoiceOver labels and keyboard navigation.
 - Overlay across spaces, full-screen apps, sleep/wake, resolution changes, and display hot-plug.
-- Visible five-minute deferral and clock-out controls at all supported sizes.
+- Visible five-minute deferral (until used in the current focus cycle) and clock-out controls at all supported sizes.
 - Menu-bar legibility and countdown updates.
 - Color-blind-safe meaning: every state is understandable from text alone.
 

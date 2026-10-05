@@ -1565,6 +1565,7 @@ final class AppModel: ObservableObject {
         } else if state.phase == .focusing && state.enforcement == .required {
             overlayController.show(
                 startBreak: { [weak self] in self?.startBreak() },
+                canDeferBreak: state.canDeferBreak,
                 deferBreakTitle: isDemoMode ? "15 more seconds" : "5 more minutes",
                 deferBreak: { [weak self] in self?.deferBreak() },
                 clockOut: { [weak self] in self?.clockOut() }

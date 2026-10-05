@@ -49,6 +49,40 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.revision, revision)
     }
 
+    func testBreakCanOnlyBeDeferredOnceUntilNextFocusCycle() {
+        var engine = BreakBarEngine(policy: policy)
+        _ = engine.handle(.clockIn, at: origin)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+        XCTAssertTrue(engine.state.canDeferBreak)
+        _ = engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(60))
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(360))
+        XCTAssertEqual(engine.state.enforcement, .required)
+        XCTAssertFalse(engine.state.canDeferBreak)
+        let state = engine.state
+        XCTAssertEqual(engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(360)), .unchanged)
+        XCTAssertEqual(engine.state, state)
+        _ = engine.handle(.updateCalendarConstraints([]), at: origin.addingTimeInterval(361))
+        XCTAssertFalse(engine.state.canDeferBreak)
+        _ = engine.handle(.startBreak, at: origin.addingTimeInterval(362))
+        _ = engine.handle(.returnToFocus, at: origin.addingTimeInterval(382))
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(442))
+        XCTAssertTrue(engine.state.canDeferBreak)
+        XCTAssertEqual(engine.handle(.deferBreak(by: 300), at: origin.addingTimeInterval(442)), .changed)
+    }
+
+    func testLegacySavedStateDecodesAndPreservesUsedDeferral() throws {
+        var state = BreakBarState(phase: .focusing, enforcement: .required)
+        let data = try JSONEncoder().encode(state)
+        XCTAssertNil(try JSONDecoder().decode(BreakBarState.self, from: data).breakDeferredAt)
+        state.breakPlanReason = .userDeferred
+        let recovered = try JSONDecoder().decode(BreakBarState.self, from: JSONEncoder().encode(state))
+        XCTAssertFalse(recovered.canDeferBreak)
+        var engine = BreakBarEngine(state: recovered, policy: policy)
+        XCTAssertNotNil(engine.state.breakDeferredAt)
+        _ = engine.handle(.updateCalendarConstraints([]), at: origin)
+        XCTAssertFalse(engine.state.canDeferBreak)
+    }
+
     func testBreakDeferralRequiresARequiredBreakAndPositiveDuration() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)

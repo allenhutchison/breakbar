@@ -10,6 +10,7 @@ final class OverlayController {
 
     func show(
         startBreak: @escaping () -> Void,
+        canDeferBreak: Bool,
         deferBreakTitle: String,
         deferBreak: @escaping () -> Void,
         clockOut: @escaping () -> Void
@@ -33,6 +34,7 @@ final class OverlayController {
         panel.contentViewController = NSHostingController(
             rootView: BreakRequiredView(
                 startBreak: startBreak,
+                canDeferBreak: canDeferBreak,
                 deferBreakTitle: deferBreakTitle,
                 deferBreak: deferBreak,
                 clockOut: clockOut
@@ -163,6 +165,7 @@ private final class BreakOverlayPanel: NSPanel {
 private struct BreakRequiredView: View {
     @State private var isConfirmingClockOut = false
     let startBreak: () -> Void
+    let canDeferBreak: Bool
     let deferBreakTitle: String
     let deferBreak: () -> Void
     let clockOut: () -> Void
@@ -207,10 +210,12 @@ private struct BreakRequiredView: View {
                         .controlSize(.large)
                         .keyboardShortcut(.return, modifiers: [])
 
-                    Button(deferBreakTitle, action: deferBreak)
-                        .buttonStyle(.bordered)
-                        .controlSize(.large)
-                        .accessibilityHint("Dismisses this screen and delays the break deadline.")
+                    if canDeferBreak {
+                        Button(deferBreakTitle, action: deferBreak)
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .accessibilityHint("Delays this break once. The next reminder requires a break.")
+                    }
 
                     Button("Clock out instead") {
                         isConfirmingClockOut = true
