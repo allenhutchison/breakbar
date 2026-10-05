@@ -80,6 +80,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var focusDueAt: Date?
     public var minimumBreakEndsAt: Date?
     public var breakPlanReason: BreakPlanReason?
+    public var breakDeferredAt: Date?
     public var calendarMeetingStartsAt: Date?
     public var calendarMeetingEndsAt: Date?
     public var scheduledMeetingStartedAt: Date?
@@ -93,6 +94,11 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var lastTransitionReason: BreakTransitionReason?
     public var revision: UInt64
 
+    public var canDeferBreak: Bool {
+        phase == .focusing && enforcement == .required
+            && breakDeferredAt == nil && breakPlanReason != .userDeferred
+    }
+
     public init(
         phase: BreakBarPhase = .clockedOut,
         enforcement: BreakEnforcement = .none,
@@ -101,6 +107,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         focusDueAt: Date? = nil,
         minimumBreakEndsAt: Date? = nil,
         breakPlanReason: BreakPlanReason? = nil,
+        breakDeferredAt: Date? = nil,
         calendarMeetingStartsAt: Date? = nil,
         calendarMeetingEndsAt: Date? = nil,
         scheduledMeetingStartedAt: Date? = nil,
@@ -121,6 +128,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.focusDueAt = focusDueAt
         self.minimumBreakEndsAt = minimumBreakEndsAt
         self.breakPlanReason = breakPlanReason
+        self.breakDeferredAt = breakDeferredAt
         self.calendarMeetingStartsAt = calendarMeetingStartsAt
         self.calendarMeetingEndsAt = calendarMeetingEndsAt
         self.scheduledMeetingStartedAt = scheduledMeetingStartedAt

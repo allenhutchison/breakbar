@@ -6,6 +6,10 @@ public struct BreakBarEngine: Sendable {
 
     public init(state: BreakBarState = BreakBarState(), policy: BreakPolicy = .standard) {
         self.state = state
+        // Older saved states recorded deferral only in the current schedule reason.
+        if state.breakPlanReason == .userDeferred, state.breakDeferredAt == nil {
+            self.state.breakDeferredAt = state.phaseStartedAt ?? state.focusDueAt ?? .distantPast
+        }
         self.policy = policy
     }
 
@@ -40,13 +44,13 @@ public struct BreakBarEngine: Sendable {
             return .changed
 
         case let .deferBreak(duration):
-            guard state.phase == .focusing,
-                  state.enforcement == .required,
+            guard state.canDeferBreak,
                   duration.isFinite,
                   duration > 0
             else { return .unchanged }
             state.enforcement = .warning
             state.focusDueAt = now.addingTimeInterval(duration)
+            state.breakDeferredAt = now
             state.breakPlanReason = .userDeferred
             state.lastTransitionReason = .breakDeferred
             state.revision &+= 1
@@ -349,6 +353,7 @@ public struct BreakBarEngine: Sendable {
     }
 
     private mutating func beginFocus(at now: Date, reason: BreakTransitionReason) {
+        state.breakDeferredAt = nil
         state.phase = .focusing
         state.enforcement = .none
         state.phaseStartedAt = now

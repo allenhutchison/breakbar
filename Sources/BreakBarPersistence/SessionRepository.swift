@@ -139,6 +139,15 @@ public final class SessionRepository {
             try execute("PRAGMA busy_timeout = 3000")
             try execute("PRAGMA secure_delete = ON")
             try migrate()
+            // Persist legacy deferral recovery before it becomes a transition baseline.
+            try transaction {
+                if var state = try loadState(),
+                   state.breakPlanReason == .userDeferred, state.breakDeferredAt == nil
+                {
+                    state.breakDeferredAt = state.phaseStartedAt ?? state.focusDueAt ?? .distantPast
+                    try saveSnapshot(state)
+                }
+            }
         } catch {
             sqlite3_close(connection)
             database = nil
