@@ -6,7 +6,7 @@ Maintainerd architecture audits read this file; edit it freely and review every 
 - The Mac owns policy, scheduling, durable timer recovery, and state-machine truth. No accessory or provider may become authoritative for a timer.
 - Accessories are optional plugins. Disconnecting or removing one must not change the meaning or progress of the Mac timer.
 - A state transition is durably committed before its resulting presentation or side effects are published.
-- Live timer transitions save only the current recovery snapshot; do not record new work sessions, activity intervals, or transition history. Preserve legacy history for export/deletion.
+- Live timer transitions save only the current recovery snapshot; do not record new work sessions, activity intervals, or transition history. Preserve legacy history without exposing history-management controls.
 - Schema migrations are versioned, transactional, preserve existing history, and reject databases newer than the app understands.
 - A normal break cannot return to focus before its configured minimum; waking the Mac or exiting the screensaver never ends a break.
 - Active detected or manual meetings suppress visible break enforcement. Refreshed calendar deletions and shortened events must release stale suppression. An overdue meeting ends with a full warning period, not an immediate forced overlay.

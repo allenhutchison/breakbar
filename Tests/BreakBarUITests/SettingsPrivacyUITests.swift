@@ -20,6 +20,7 @@ final class SettingsPrivacyUITests: XCTestCase {
         continueAfterFailure = false
         let statusItem = application.menuBars.statusItems.firstMatch
         XCTAssertTrue(statusItem.waitForExistence(timeout: 5))
+        application.activate()
         statusItem.click()
         let pause = application.buttons["timer.pause"]
         XCTAssertTrue(pause.waitForExistence(timeout: 5), application.debugDescription)
@@ -37,7 +38,7 @@ final class SettingsPrivacyUITests: XCTestCase {
     }
 
     @MainActor
-    func testSettingsPrivacyExplanationAndDeletionFlow() throws {
+    func testSettingsShowsPrivacyInformationWithoutHistoryControls() throws {
         let environment = ProcessInfo.processInfo.environment
         let appURL = environment["BREAKBAR_UI_TEST_APP"]
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
@@ -77,43 +78,15 @@ final class SettingsPrivacyUITests: XCTestCase {
                 .waitForExistence(timeout: 2)
         )
 
-        let exportButton = application.buttons["settings.privacy.export-history"]
-        XCTAssertTrue(exportButton.exists)
-        XCTAssertTrue(exportButton.isEnabled)
-
-        let deleteButton = application.buttons["settings.privacy.delete-history"]
-        XCTAssertTrue(deleteButton.exists)
-        XCTAssertTrue(deleteButton.isEnabled)
-        scrollUntilHittable(deleteButton, in: application)
-        XCTAssertTrue(deleteButton.isHittable)
-        deleteButton.click()
-
-        let confirmationSheet = application.windows["BreakBar Settings"].sheets.firstMatch
-        XCTAssertTrue(confirmationSheet.waitForExistence(timeout: 2))
-        XCTAssertTrue(
-            confirmationSheet.staticTexts["Delete all local history?"].exists
-        )
-        confirmationSheet.buttons["Delete History"].click()
-
-        let status = application.descendants(matching: .any)["settings.privacy.status"]
-        XCTAssertTrue(status.waitForExistence(timeout: 2))
-        XCTAssertTrue(status.label.contains("Deleted all local history"))
+        XCTAssertFalse(application.buttons["settings.privacy.export-history"].exists)
+        XCTAssertFalse(application.buttons["settings.privacy.delete-history"].exists)
+        XCTAssertFalse(application.buttons["Export Complete History…"].exists)
+        XCTAssertFalse(application.buttons["Delete All Local History…"].exists)
         XCTAssertFalse(application.staticTexts["Obsidian"].exists)
         let window = application.windows["BreakBar Settings"]
         window.buttons[XCUIIdentifierCloseWindow].click()
         XCTAssertFalse(window.exists)
         XCTAssertNotEqual(application.state, .notRunning)
-    }
-
-    @MainActor
-    private func scrollUntilHittable(
-        _ element: XCUIElement,
-        in application: XCUIApplication
-    ) {
-        let scrollView = application.scrollViews.firstMatch
-        for _ in 0 ..< 8 where !element.isHittable {
-            scrollView.swipeUp()
-        }
     }
 
     private static var defaultAppURL: URL {

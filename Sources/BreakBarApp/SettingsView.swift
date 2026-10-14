@@ -93,7 +93,7 @@ struct SettingsView: View {
 
             BusyBarSettingsSection(model: model)
 
-            PrivacyDataSettingsSection(model: model)
+            PrivacyDataSettingsSection()
 
             Section("Updates") {
                 Button("Check for Updates…", action: checkForUpdates)
@@ -119,9 +119,6 @@ struct SettingsView: View {
 }
 
 private struct PrivacyDataSettingsSection: View {
-    @ObservedObject var model: AppModel
-    @State private var isConfirmingDeletion = false
-
     var body: some View {
         Section("Privacy & Data") {
             Text("BreakBar saves only its current timer and settings on this Mac. It has no analytics or cloud account.")
@@ -132,49 +129,6 @@ private struct PrivacyDataSettingsSection: View {
             LabeledContent("Timer recovery", value: "Saved locally; no activity history is recorded")
             LabeledContent("Calendar", value: "Read only; event titles are not stored")
             LabeledContent("Live meetings", value: "Activity only; audio is never recorded")
-            Text("History from earlier versions is preserved. You can export or delete it here.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Button("Export Complete History…", action: model.exportCompleteHistory)
-                    .disabled(!model.canExportCompleteHistory)
-                    .accessibilityIdentifier("settings.privacy.export-history")
-                Button("Delete All Local History…", role: .destructive) {
-                    isConfirmingDeletion = true
-                }
-                .disabled(!model.canDeleteAllLocalHistory)
-                .accessibilityIdentifier("settings.privacy.delete-history")
-            }
-
-            if model.state.phase != .clockedOut {
-                Text("Pause reminders before deleting old history.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let message = model.privacyDataMessage {
-                Label(
-                    message,
-                    systemImage: model.privacyDataMessageIsError
-                        ? "exclamationmark.triangle.fill"
-                        : "checkmark.circle.fill"
-                )
-                .font(.caption)
-                .foregroundStyle(model.privacyDataMessageIsError ? Color.red : Color.secondary)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(message)
-                .accessibilityIdentifier("settings.privacy.status")
-            }
-        }
-        .alert("Delete all local history?", isPresented: $isConfirmingDeletion) {
-            Button("Delete History", role: .destructive, action: model.deleteAllLocalHistory)
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(
-                "This permanently removes history recorded by earlier versions from this Mac. "
-                    + "BreakBar settings will not change. This cannot be undone."
-            )
         }
     }
 }

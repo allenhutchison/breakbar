@@ -43,7 +43,7 @@ Connect and select calendars in **Settings** to plan around meetings and travel.
 
 An event whose title contains `Travel`, `Commute`, or `Drive` starts a travel chain; a physical event location marks an offsite meeting, and an ordinary meeting between outbound and return travel blocks is treated as offsite too. BreakBar shows a five-minute `Leave` countdown with a notification and sound, then a `TIME TO GO` overlay at departure. Break reminders pause through the connected offsite chain and resume when you are active after it ends. Calendar titles are used for classification but are never stored in timer state.
 
-BreakBar saves its current timer for restart recovery and no longer records work sessions, activity categories, or a daily timeline. The Obsidian integration and history reporting have been removed. Existing Markdown notes remain untouched. History recorded by earlier versions is preserved and frozen when you first run this version; **Settings → Privacy & Data** lets you export it as JSON or delete it while reminders are paused.
+BreakBar saves its current timer for restart recovery and no longer records work sessions, activity categories, or a daily timeline. The Obsidian integration and history reporting have been removed. Existing Markdown notes remain untouched. History recorded by earlier versions is preserved and frozen when you first run this version. Settings no longer includes history export or deletion controls.
 
 Open **Diagnostics** from the information button in the menu-bar popover to inspect timer, scheduling, integration, database, and BUSY Bar health. **Copy Diagnostics** omits calendar titles and identifiers, call application identifiers, file paths, device addresses, credentials, and raw errors.
 
