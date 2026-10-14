@@ -16,6 +16,54 @@ public struct BreakBarEngine: Sendable {
     @discardableResult
     public mutating func handle(_ command: BreakCommand, at now: Date) -> BreakCommandResult {
         switch command {
+        case .pauseReminders:
+            guard state.remindersPaused != true else { return .unchanged }
+            state = BreakBarState(
+                lastTransitionReason: .remindersPaused,
+                remindersPaused: true,
+                revision: state.revision &+ 1
+            )
+            return .changed
+
+        case .resumeReminders:
+            guard state.phase == .clockedOut || state.remindersPaused == true else { return .unchanged }
+            state.remindersPaused = false
+            beginFocus(at: now, reason: .remindersResumed)
+            return .changed
+
+        case let .observeActivity(idleDuration):
+            guard idleDuration.isFinite, idleDuration >= 0,
+                  state.remindersPaused != true else { return .unchanged }
+            if state.phase == .focusing {
+                return idleDuration >= min(policy.idleThreshold, policy.minimumBreakDuration)
+                    ? handle(.idleThresholdReached(idleStartedAt: now.addingTimeInterval(-idleDuration)), at: now)
+                    : .unchanged
+            }
+            guard idleDuration < 2 else { return .unchanged }
+            switch state.phase {
+            case .awayUnclassified:
+                if now.timeIntervalSince(state.phaseStartedAt ?? now) < policy.minimumBreakDuration {
+                    state.phase = .focusing
+                    state.phaseStartedAt = state.awayPreviousFocusStartedAt ?? now
+                    state.awayPreviousFocusStartedAt = nil
+                    state.awayReturnDetectedAt = nil
+                    state.lastTransitionReason = .userActivityResumed
+                    state.revision &+= 1
+                    return .changed
+                }
+                beginFocus(at: now, reason: .userActivityResumed)
+                return .changed
+            case .clockedOut, .onLunch:
+                beginFocus(at: now, reason: .userActivityResumed)
+                return .changed
+            case .onBreak:
+                return handle(.returnToFocus, at: now)
+            case .traveling, .offsiteMeeting:
+                return handle(.returnHome, at: now)
+            case .focusing:
+                return .unchanged
+            }
+
         case .clockIn:
             guard state.phase == .clockedOut else { return .unchanged }
             beginFocus(at: now, reason: .clockIn)
@@ -385,10 +433,6 @@ public struct BreakBarEngine: Sendable {
         }
         guard state.enforcement != .travelWarning else { return .unchanged }
         guard state.manualMeetingStartedAt == nil else { return .unchanged }
-        if let result = reconcileEndedMeeting(at: now) {
-            return result
-        }
-
         let plan = BreakSchedulePlanner.plan(
             cycleStartedAt: cycleStartedAt,
             now: now,
@@ -397,7 +441,7 @@ public struct BreakBarEngine: Sendable {
         )
         var calendarMeetingStartsAt = plan.meetingStartsAt
         var calendarMeetingEndsAt = plan.meetingEndsAt
-        var calendarMeetingIsActive = plan.meetingIsActive(at: now)
+        let calendarMeetingIsActive = plan.meetingIsActive(at: now)
         var plannedBreakAt = plan.plannedBreakAt
         var planReason = plan.reason
 
@@ -412,20 +456,23 @@ public struct BreakBarEngine: Sendable {
             planReason = .deferredThroughMeeting
         }
 
-        // Once a scheduled meeting begins, retain its known window through the
-        // scheduled end even if EventKit briefly returns an empty result.
-        if !calendarMeetingIsActive,
-           meetingIsActive(at: now),
-           let storedMeetingStartsAt = state.calendarMeetingStartsAt,
-           let storedMeetingEndsAt = state.calendarMeetingEndsAt
-        {
-            calendarMeetingStartsAt = storedMeetingStartsAt
-            calendarMeetingEndsAt = storedMeetingEndsAt
-            calendarMeetingIsActive = true
-            if now >= plan.nominalBreakAt {
-                plannedBreakAt = storedMeetingEndsAt.addingTimeInterval(policy.warningDuration)
-                planReason = .deferredThroughMeeting
-            }
+        // A refreshed calendar snapshot is authoritative. Release a removed,
+        // moved, or shortened meeting without enforcing an overdue break abruptly.
+        let storedMeetingStarted = state.calendarMeetingStartsAt.map { $0 <= now } ?? false
+        let releasedMeeting = !calendarMeetingIsActive
+            && (state.scheduledMeetingStartedAt != nil
+                || (storedMeetingStarted
+                    && state.calendarMeetingEndsAt != nil
+                    && plan.meetingEndsAt == nil))
+        if releasedMeeting, state.liveCallStartedAt == nil {
+            state.calendarMeetingStartsAt = calendarMeetingStartsAt
+            state.calendarMeetingEndsAt = calendarMeetingEndsAt
+            state.scheduledMeetingStartedAt = nil
+            state.enforcement = .none
+            restoreBreakPlanAfterMeeting(at: now)
+            state.lastTransitionReason = .scheduledMeetingEnded
+            state.revision &+= 1
+            return .changed
         }
 
         let preservesCurrentDeadline = state.breakPlanReason == .userDeferred
@@ -453,6 +500,9 @@ public struct BreakBarEngine: Sendable {
         candidate.calendarMeetingEndsAt = calendarMeetingEndsAt
         if calendarMeetingIsActive || state.liveCallStartedAt != nil {
             candidate.enforcement = .none
+        }
+        if releasedMeeting {
+            candidate.scheduledMeetingStartedAt = nil
         }
         if calendarMeetingIsActive, candidate.scheduledMeetingStartedAt == nil {
             candidate.scheduledMeetingStartedAt = max(

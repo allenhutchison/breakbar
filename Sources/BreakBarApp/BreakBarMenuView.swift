@@ -65,44 +65,14 @@ struct BreakBarMenuView: View {
                     .buttonStyle(.borderedProminent)
                     .tint(palette.accent)
                     .controlSize(.large)
-                }
-
-                if model.state.phase == .focusing,
-                   model.state.manualMeetingStartedAt == nil
-                {
-                    Button(action: model.startLunch) {
-                        Text("Take lunch")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(BreakPalette(tone: .lunch).accent)
-                    .controlSize(.large)
-
-                    if model.presentation.tone != .meeting {
-                        Button(action: model.startManualMeeting) {
-                            Text("In a meeting")
-                                .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(BreakPalette(tone: .meeting).accent)
-                        .controlSize(.large)
-                    }
-                }
-
-                if model.state.phase == .awayUnclassified,
-                   model.state.awayReturnDetectedAt != nil
-                {
-                    AwayClassificationButtons(model: model)
+                    .accessibilityIdentifier("timer.primary")
                 }
 
                 if model.state.phase != .clockedOut {
-                    Button(action: model.clockOut) {
-                        Text("Clock out")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(BreakPalette(tone: .neutral).accent)
-                    .controlSize(.large)
+                    Button("Pause reminders", action: model.pauseReminders)
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .accessibilityIdentifier("timer.pause")
                 }
             }
             .padding(20)
@@ -121,13 +91,6 @@ struct BreakBarMenuView: View {
                 .buttonStyle(.plain)
                 .help("Diagnostics")
                 .accessibilityLabel("Diagnostics")
-                Button {
-                    model.showTodayHistory()
-                } label: {
-                    Image(systemName: "chart.bar.xaxis")
-                }
-                .buttonStyle(.plain)
-                .help("Today’s history")
                 Button(action: checkForUpdates) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                 }
@@ -152,45 +115,6 @@ struct BreakBarMenuView: View {
         }
         .frame(width: 360)
         .background(.ultraThinMaterial)
-    }
-}
-
-private struct AwayClassificationButtons: View {
-    @ObservedObject var model: AppModel
-
-    var body: some View {
-        VStack(spacing: 10) {
-            Text("Classify your time away")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            classificationButton(
-                model.preferredAwayClassification == .lunch ? "Lunch · Suggested" : "Lunch",
-                tone: .lunch,
-                classification: .lunch
-            )
-            classificationButton("Break", tone: .breakTime, classification: .breakTime)
-            classificationButton("Meeting", tone: .meeting, classification: .meeting)
-            classificationButton("Other away", tone: .away, classification: .otherAway)
-            classificationButton("Count as work", tone: .focus, classification: .countAsWork)
-        }
-    }
-
-    private func classificationButton(
-        _ title: String,
-        tone: BreakBarPresentation.Tone,
-        classification: AwayClassification
-    ) -> some View {
-        Button {
-            model.classifyAway(as: classification)
-        } label: {
-            Text(title)
-                .frame(maxWidth: .infinity)
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(BreakPalette(tone: tone).accent)
-        .controlSize(.large)
     }
 }
 

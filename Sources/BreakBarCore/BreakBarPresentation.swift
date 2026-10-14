@@ -50,11 +50,13 @@ public struct BreakBarPresentation: Equatable, Sendable {
         case .clockedOut:
             statusLabel = "BreakBar"
             timer = nil
-            title = "Ready when you are"
-            detail = "Clock in to begin a \(Self.spoken(policy.focusDuration)) focus cycle."
+            title = state.remindersPaused == true ? "Reminders paused" : "Ready when you are"
+            detail = state.remindersPaused == true
+                ? "Resume when you’re ready for break reminders."
+                : "Break reminders start automatically when you’re active."
             progress = 0
             tone = .neutral
-            primaryActionTitle = "Clock in"
+            primaryActionTitle = "Resume reminders"
 
         case .focusing:
             if state.enforcement == .travelWarning,
@@ -194,7 +196,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
             )
             title = minimumSatisfied ? "Break complete" : "Stay away a little longer"
             detail = minimumSatisfied
-                ? "Return when you’re ready; the extra time still counts."
+                ? "Reminders resume when you return."
                 : "Minimum break remaining: \(Self.spoken(remaining))."
             progress = minimumSatisfied ? 1 : min(1, max(0, 1 - remaining / policy.minimumBreakDuration))
             tone = .breakTime
@@ -218,7 +220,7 @@ public struct BreakBarPresentation: Equatable, Sendable {
             title = state.awayReturnDetectedAt == nil ? "Away" : "Welcome back"
             detail = state.awayReturnDetectedAt == nil
                 ? "Break enforcement is paused until activity resumes."
-                : "Classify your away time to continue."
+                : "Reminders resume automatically when you’re active."
             progress = 1
             tone = .away
             primaryActionTitle = nil

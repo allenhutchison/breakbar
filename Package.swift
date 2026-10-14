@@ -10,7 +10,6 @@ let package = Package(
         .library(name: "BreakBarCore", targets: ["BreakBarCore"]),
         .library(name: "BreakBarBusyBar", targets: ["BreakBarBusyBar"]),
         .library(name: "BreakBarPersistence", targets: ["BreakBarPersistence"]),
-        .library(name: "BreakBarExport", targets: ["BreakBarExport"]),
     ],
     dependencies: [
         .package(
@@ -42,17 +41,12 @@ let package = Package(
             name: "BreakBarPersistence",
             dependencies: ["BreakBarCore", "CSQLite"]
         ),
-        .target(
-            name: "BreakBarExport",
-            dependencies: ["BreakBarPersistence"]
-        ),
         .executableTarget(
             name: "BreakBarApp",
             dependencies: [
                 "BreakBarCore",
                 "BreakBarBusyBar",
                 "BreakBarPersistence",
-                "BreakBarExport",
                 .product(name: "Sparkle", package: "Sparkle"),
             ],
             linkerSettings: [
@@ -77,10 +71,6 @@ let package = Package(
         .testTarget(
             name: "BreakBarPersistenceTests",
             dependencies: ["BreakBarCore", "BreakBarPersistence", "CSQLite"]
-        ),
-        .testTarget(
-            name: "BreakBarExportTests",
-            dependencies: ["BreakBarExport", "BreakBarPersistence"]
         ),
         .testTarget(
             name: "BreakBarAppTests",

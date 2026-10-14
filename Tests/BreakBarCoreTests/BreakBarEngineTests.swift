@@ -353,34 +353,25 @@ final class BreakBarEngineTests: XCTestCase {
         XCTAssertEqual(engine.state.enforcement, .none)
     }
 
-    func testActiveMeetingWindowSurvivesTransientEmptyCalendarRefresh() {
+    func testDeletedActiveMeetingReleasesSuppressionWithFullWarning() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.clockIn, at: origin)
         let meeting = BreakCalendarConstraint(
-            id: "meeting",
-            startAt: origin.addingTimeInterval(50),
-            endAt: origin.addingTimeInterval(90)
+            id: "meeting", startAt: origin.addingTimeInterval(50), endAt: origin.addingTimeInterval(90)
         )
-        _ = engine.handle(
-            .updateCalendarConstraints([meeting]),
-            at: origin.addingTimeInterval(50)
-        )
-
-        XCTAssertEqual(
-            engine.handle(
-                .updateCalendarConstraints([]),
-                at: origin.addingTimeInterval(70)
-            ),
-            .changed
-        )
-        XCTAssertEqual(engine.state.enforcement, .none)
-        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(105))
-        XCTAssertEqual(engine.state.calendarMeetingStartsAt, meeting.startAt)
-        XCTAssertEqual(engine.state.calendarMeetingEndsAt, meeting.endAt)
-        XCTAssertEqual(
-            engine.handle(.tick, at: origin.addingTimeInterval(70)),
-            .unchanged
-        )
+        _ = engine.handle(.updateCalendarConstraints([meeting]), at: origin.addingTimeInterval(50))
+        XCTAssertEqual(engine.handle(.updateCalendarConstraints([]), at: origin.addingTimeInterval(70)), .changed)
+        XCTAssertNil(engine.state.calendarMeetingStartsAt)
+        XCTAssertNil(engine.state.calendarMeetingEndsAt)
+        XCTAssertNil(engine.state.scheduledMeetingStartedAt)
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(85))
+        XCTAssertEqual(engine.state.breakPlanReason, .postMeetingWarning)
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(70))
+        XCTAssertEqual(engine.state.enforcement, .warning)
+        _ = engine.handle(.updateCalendarConstraints([]), at: origin.addingTimeInterval(71))
+        XCTAssertEqual(engine.state.focusDueAt, origin.addingTimeInterval(85))
+        _ = engine.handle(.tick, at: origin.addingTimeInterval(85))
+        XCTAssertEqual(engine.state.enforcement, .required)
     }
 
     func testMeetingStartSuppressesAlreadyRequiredBreak() {

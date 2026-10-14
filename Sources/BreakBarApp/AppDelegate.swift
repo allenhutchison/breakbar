@@ -43,12 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
         if launchConfiguration.isUITestMode {
             switch launchConfiguration.uiTestScenario {
+            case .automaticTimer:
+                model.observeActivity(idleDuration: 0, at: AppLaunchConfiguration.uiTestReferenceDate)
             case .settingsPrivacy:
                 showSettings()
-            case .overnightTravelCorrection:
-                model.showTodayHistory()
-            case .awayClassification:
-                model.presentSeededAwayReturnForUITest()
             case nil:
                 break
             }
