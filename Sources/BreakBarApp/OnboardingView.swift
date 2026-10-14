@@ -79,8 +79,6 @@ struct OnboardingView: View {
             notificationsStep
         case .calendar:
             calendarStep
-        case .obsidian:
-            obsidianStep
         case .options:
             optionsStep
         case .ready:
@@ -98,17 +96,17 @@ struct OnboardingView: View {
                 OnboardingFeature(
                     symbol: "macbook",
                     title: "Complete without accessories",
-                    detail: "The Mac always provides the timer, controls, history, and safety escape."
+                    detail: "The Mac always provides the timer, controls, and safety escape."
                 )
                 OnboardingFeature(
                     symbol: "hand.raised.fill",
                     title: "Deliberate by design",
-                    detail: "Breaks start and end only when you choose. Closing a window never quits BreakBar."
+                    detail: "Reminders start when you work and resume after time away. Pause them whenever you need to."
                 )
                 OnboardingFeature(
                     symbol: "lock.shield.fill",
                     title: "Local and inspectable",
-                    detail: "History stays in a local database. Calendar titles and microphone audio are not stored."
+                    detail: "Only timer recovery and settings are saved. Calendar titles and microphone audio are not stored."
                 )
             }
         }
@@ -156,7 +154,7 @@ struct OnboardingView: View {
     private var calendarStep: some View {
         OnboardingStepLayout(
             title: "Plan around your calendar",
-            detail: "Calendar access lets BreakBar move breaks around meetings, lunch, and travel. "
+            detail: "Calendar access lets BreakBar plan around meetings and remind you when to leave for travel. "
                 + "It reads selected calendars and never edits events."
         ) {
             GroupBox {
@@ -232,58 +230,6 @@ struct OnboardingView: View {
         }
     }
 
-    private var obsidianStep: some View {
-        OnboardingStepLayout(
-            title: "Keep a daily work log in Obsidian",
-            detail: "This optional export turns BreakBar’s local history into a section "
-                + "of each day’s Markdown note."
-        ) {
-            GroupBox {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack {
-                        LabeledContent(
-                            "Daily notes folder",
-                            value: model.obsidianFolderDisplayName
-                        )
-                        Spacer()
-                        Button(
-                            "Choose Folder",
-                            action: model.chooseObsidianDailyNotesFolder
-                        )
-                    }
-
-                    Divider()
-
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("What happens")
-                            .font(.headline)
-
-                        Text(
-                            "1. Setup saves this folder location; it does not export "
-                                + "anything yet."
-                        )
-                        Text(
-                            "2. After clock-out or a history correction, BreakBar creates "
-                                + "or updates " + model.obsidianFilenameExample + " with a work "
-                                + "summary and interval timeline."
-                        )
-                        Text(
-                            "3. Only BreakBar’s marked section is replaced, so everything "
-                                + "else in the note stays untouched."
-                        )
-                    }
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(8)
-            }
-
-            Text("You can change the note path or export manually later in Settings.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-        }
-    }
-
     private var optionsStep: some View {
         OnboardingStepLayout(
             title: "Choose the helpers you want",
@@ -344,7 +290,7 @@ struct OnboardingView: View {
     private var readyStep: some View {
         OnboardingStepLayout(
             title: "Ready when you are",
-            detail: "BreakBar stays clocked out until you choose Clock In from the menu bar. "
+            detail: "BreakBar starts reminders automatically when you are active. "
                 + "Setup can be run again from Settings at any time."
         ) {
             GroupBox {
@@ -362,12 +308,6 @@ struct OnboardingView: View {
                     )
                     Divider()
                     OnboardingSummaryRow(
-                        symbol: "doc.text",
-                        title: "Obsidian",
-                        value: model.obsidianFolderDisplayName
-                    )
-                    Divider()
-                    OnboardingSummaryRow(
                         symbol: "power",
                         title: "Launch at login",
                         value: model.launchAtLoginRequested ? "On" : "Off"
@@ -377,7 +317,7 @@ struct OnboardingView: View {
             }
 
             Label(
-                "No timer has started yet.",
+                "Pause or resume reminders from the menu bar.",
                 systemImage: "pause.circle"
             )
             .font(.callout)

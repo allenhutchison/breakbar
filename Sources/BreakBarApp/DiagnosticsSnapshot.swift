@@ -44,13 +44,6 @@ enum DiagnosticsDatabaseStatus: Equatable, Sendable {
     case unavailable
 }
 
-enum DiagnosticsExportStatus: Equatable, Sendable {
-    case notConfigured
-    case notAttempted
-    case succeeded
-    case failed
-}
-
 enum NotificationAccessState: Equatable, Sendable {
     case notDetermined
     case enabled
@@ -80,8 +73,6 @@ struct DiagnosticsSnapshotInput: Sendable {
     let callMonitorStatus: CallActivityMonitorStatus
     let acceptedCallSignal: BreakCallSignal?
     let databaseStatus: DiagnosticsDatabaseStatus
-    let obsidianFolderURL: URL?
-    let exportStatus: DiagnosticsExportStatus
     let busyBarEnabled: Bool
     let busyBarAddress: String
     let busyBarConnectionState: BusyBarConnectionState
@@ -188,14 +179,9 @@ enum DiagnosticsSnapshotBuilder {
         _ input: DiagnosticsSnapshotInput
     ) -> DiagnosticsSnapshot.Section {
         .init(
-            title: "Storage and export",
+            title: "Timer storage",
             rows: [
                 .init(label: "Database", value: databaseDescription(input.databaseStatus)),
-                .init(
-                    label: "Obsidian folder",
-                    value: input.obsidianFolderURL == nil ? "Not configured" : "Configured (path redacted)"
-                ),
-                .init(label: "Last export this launch", value: exportDescription(input.exportStatus)),
             ]
         )
     }
@@ -232,7 +218,7 @@ enum DiagnosticsSnapshotBuilder {
 
     private static func phaseDescription(_ phase: BreakBarPhase) -> String {
         switch phase {
-        case .clockedOut: "Clocked out"
+        case .clockedOut: "Inactive"
         case .focusing: "Focusing"
         case .onBreak: "On break"
         case .onLunch: "At lunch"
@@ -291,15 +277,6 @@ enum DiagnosticsSnapshotBuilder {
         case .healthy: "Healthy"
         case .issueDetected: "Issue detected"
         case .unavailable: "Unavailable"
-        }
-    }
-
-    private static func exportDescription(_ status: DiagnosticsExportStatus) -> String {
-        switch status {
-        case .notConfigured: "Not configured"
-        case .notAttempted: "Not attempted"
-        case .succeeded: "Succeeded"
-        case .failed: "Failed"
         }
     }
 

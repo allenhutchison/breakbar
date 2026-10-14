@@ -9,7 +9,6 @@ final class DiagnosticsSnapshotTests: XCTestCase {
     func testReportIncludesOperationalHealthWithoutSensitiveValues() {
         let privateCalendarIdentifier = "calendar-secret-identifier"
         let privateBundleIdentifier = "com.example.private-call-app"
-        let privateFolder = "/Users/example/Private Vault/Clients/Acme"
         let privateDeviceAddress = "https://breakbar-device.private.example:8443"
         let state = BreakBarState(
             phase: .focusing,
@@ -46,8 +45,6 @@ final class DiagnosticsSnapshotTests: XCTestCase {
                     confidence: .dedicatedApplication
                 ),
                 databaseStatus: .healthy,
-                obsidianFolderURL: URL(fileURLWithPath: privateFolder),
-                exportStatus: .succeeded,
                 busyBarEnabled: true,
                 busyBarAddress: privateDeviceAddress,
                 busyBarConnectionState: .connected,
@@ -65,13 +62,12 @@ final class DiagnosticsSnapshotTests: XCTestCase {
         XCTAssertTrue(report.contains("Next classified constraint: Offsite meeting"))
         XCTAssertTrue(report.contains("Accepted evidence: Dedicated application active"))
         XCTAssertTrue(report.contains("Database: Healthy"))
-        XCTAssertTrue(report.contains("Obsidian folder: Configured (path redacted)"))
+        XCTAssertFalse(report.contains("Obsidian"))
         XCTAssertTrue(report.contains("Address source: Custom (address redacted)"))
         XCTAssertTrue(report.contains("Device API: 27.5.0"))
 
         XCTAssertFalse(report.contains(privateCalendarIdentifier))
         XCTAssertFalse(report.contains(privateBundleIdentifier))
-        XCTAssertFalse(report.contains(privateFolder))
         XCTAssertFalse(report.contains("Private Vault"))
         XCTAssertFalse(report.contains(privateDeviceAddress))
         XCTAssertFalse(report.contains("private.example"))
@@ -92,8 +88,6 @@ final class DiagnosticsSnapshotTests: XCTestCase {
                 callMonitorStatus: .unavailable("private raw error"),
                 acceptedCallSignal: nil,
                 databaseStatus: .unavailable,
-                obsidianFolderURL: nil,
-                exportStatus: .notConfigured,
                 busyBarEnabled: false,
                 busyBarAddress: BusyBarAddress.defaultUSB,
                 busyBarConnectionState: .off,
@@ -108,7 +102,7 @@ final class DiagnosticsSnapshotTests: XCTestCase {
         XCTAssertTrue(report.contains("Calendar: Denied"))
         XCTAssertTrue(report.contains("Detector: Calendar only"))
         XCTAssertTrue(report.contains("Database: Unavailable"))
-        XCTAssertTrue(report.contains("Obsidian folder: Not configured"))
+        XCTAssertFalse(report.contains("Obsidian"))
         XCTAssertTrue(report.contains("Address source: Default USB"))
         XCTAssertTrue(report.contains("Last input: None"))
         XCTAssertFalse(report.contains("private raw error"))

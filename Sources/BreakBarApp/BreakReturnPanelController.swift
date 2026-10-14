@@ -12,7 +12,7 @@ final class BreakReturnPanelController {
         canReturn: Bool,
         bringToFront: Bool = false,
         returnToFocus: @escaping () -> Void,
-        clockOut: @escaping () -> Void
+        pauseReminders: @escaping () -> Void
     ) {
         if let panelState {
             panelState.update(presentation: presentation, canReturn: canReturn)
@@ -26,7 +26,7 @@ final class BreakReturnPanelController {
             presentation: presentation,
             canReturn: canReturn,
             returnToFocus: returnToFocus,
-            clockOut: clockOut
+            pauseReminders: pauseReminders
         )
         let panelSize = NSSize(width: 390, height: 250)
         let panel = BreakReturnPanel(
@@ -81,18 +81,18 @@ private final class BreakReturnPanelState: ObservableObject {
     @Published private(set) var canReturn: Bool
 
     let returnToFocus: () -> Void
-    let clockOut: () -> Void
+    let pauseReminders: () -> Void
 
     init(
         presentation: BreakBarPresentation,
         canReturn: Bool,
         returnToFocus: @escaping () -> Void,
-        clockOut: @escaping () -> Void
+        pauseReminders: @escaping () -> Void
     ) {
         self.presentation = presentation
         self.canReturn = canReturn
         self.returnToFocus = returnToFocus
-        self.clockOut = clockOut
+        self.pauseReminders = pauseReminders
     }
 
     func update(presentation: BreakBarPresentation, canReturn: Bool) {
@@ -153,7 +153,7 @@ private struct BreakReturnPanelView: View {
                     .disabled(!state.canReturn)
                     .keyboardShortcut(.return, modifiers: [])
 
-                Button("Clock out", action: state.clockOut)
+                Button("Pause reminders", action: state.pauseReminders)
                     .buttonStyle(.bordered)
                     .controlSize(.large)
 

@@ -1,5 +1,7 @@
 # BreakBar V1
 
+> Product revision (2026-10-14): BreakBar is an automatic break and travel reminder. Remove clock-in/out, categorization, history reporting, and Obsidian export. Start on activity, resume after sufficient time away, and provide a durable manual pause/resume control. Persist only current timer recovery state; preserve old history for export/deletion. Calendar deletions and shortened events release suppression with a full warning when a break is overdue. The detailed V1 plan below is historical where it conflicts with this revision.
+
 ## Product and Technical Design
 
 **Status:** Implementation-ready draft

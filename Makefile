@@ -1,5 +1,6 @@
 DEVELOPER_DIR ?= /Applications/Xcode-beta.app/Contents/Developer
 CONFIGURATION ?= debug
+RUN_ARGUMENTS ?=
 SWIFT_ENV = DEVELOPER_DIR=$(DEVELOPER_DIR) \
 	CLANG_MODULE_CACHE_PATH=$(CURDIR)/.build/module-cache \
 	SWIFTPM_MODULECACHE_OVERRIDE=$(CURDIR)/.build/module-cache
@@ -101,7 +102,7 @@ test-busybar-hardware:
 		--filter BusyBarHardwareAcceptanceTests/testPhysicalInputsOverUSB
 
 run: bundle
-	open -n $(APP_BUNDLE)
+	open -n $(APP_BUNDLE) $(if $(strip $(RUN_ARGUMENTS)),--args $(RUN_ARGUMENTS))
 
 demo: bundle
 	open -n $(APP_BUNDLE) --args --demo

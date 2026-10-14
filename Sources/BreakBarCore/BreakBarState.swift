@@ -19,6 +19,8 @@ public enum BreakEnforcement: String, Codable, Equatable, Sendable {
 }
 
 public enum BreakTransitionReason: String, Codable, Equatable, Sendable {
+    case remindersPaused
+    case remindersResumed
     case clockIn
     case clockOut
     case startBreak
@@ -92,6 +94,8 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var awayReturnDetectedAt: Date?
     public var travelChain: [BreakCalendarConstraint]?
     public var lastTransitionReason: BreakTransitionReason?
+    // Missing in snapshots from versions with explicit work sessions.
+    public var remindersPaused: Bool?
     public var revision: UInt64
 
     public var canDeferBreak: Bool {
@@ -119,6 +123,7 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         awayReturnDetectedAt: Date? = nil,
         travelChain: [BreakCalendarConstraint]? = nil,
         lastTransitionReason: BreakTransitionReason? = nil,
+        remindersPaused: Bool? = nil,
         revision: UInt64 = 0
     ) {
         self.phase = phase
@@ -140,11 +145,15 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.awayReturnDetectedAt = awayReturnDetectedAt
         self.travelChain = travelChain
         self.lastTransitionReason = lastTransitionReason
+        self.remindersPaused = remindersPaused
         self.revision = revision
     }
 }
 
 public enum BreakCommand: Equatable, Sendable {
+    case pauseReminders
+    case resumeReminders
+    case observeActivity(idleDuration: TimeInterval)
     case clockIn
     case clockOut
     case startBreak

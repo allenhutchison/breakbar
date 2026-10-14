@@ -4,7 +4,6 @@ enum OnboardingStep: Int, CaseIterable, Equatable, Sendable {
     case welcome
     case notifications
     case calendar
-    case obsidian
     case options
     case ready
 }

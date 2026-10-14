@@ -180,6 +180,31 @@ public final class SessionRepository {
         }
     }
 
+    public func prepareAutomaticTimer(state: BreakBarState, at date: Date) throws {
+        try transaction {
+            // Freeze old work logs once, instead of extending them as the timer runs.
+            for table in ["intervals", "work_sessions"] {
+                try withStatement(
+                    "UPDATE \(table) SET ended_at_utc = MAX(started_at_utc, ?), updated_at_utc = ? WHERE ended_at_utc IS NULL"
+                ) { statement in
+                    try bind(date, to: statement, at: 1)
+                    try bind(date, to: statement, at: 2)
+                    try stepDone(statement)
+                }
+            }
+            if try loadState() == nil {
+                try saveSnapshot(state)
+            }
+        }
+    }
+
+    public func commitTimerTransition(from previous: BreakBarState, to next: BreakBarState) throws {
+        try transaction {
+            guard try loadState() == previous else { throw SessionRepositoryError.staleState }
+            try saveSnapshot(next)
+        }
+    }
+
     public func loadState() throws -> BreakBarState? {
         let data: Data? = try queryOne(
             "SELECT payload FROM state_snapshot WHERE singleton_id = 1"

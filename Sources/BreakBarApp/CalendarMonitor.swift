@@ -187,9 +187,9 @@ final class CalendarMonitor: NSObject, ObservableObject {
     private func startRefreshTask() {
         refreshTask = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(60))
+                try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled else { return }
-                self?.refreshEvents()
+                self?.refresh()
             }
         }
     }

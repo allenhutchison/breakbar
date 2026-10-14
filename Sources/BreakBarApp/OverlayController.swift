@@ -13,7 +13,7 @@ final class OverlayController {
         canDeferBreak: Bool,
         deferBreakTitle: String,
         deferBreak: @escaping () -> Void,
-        clockOut: @escaping () -> Void
+        pauseReminders: @escaping () -> Void
     ) {
         if panel != nil, mode != .breakRequired { hide() }
         guard panel == nil, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
@@ -37,7 +37,7 @@ final class OverlayController {
                 canDeferBreak: canDeferBreak,
                 deferBreakTitle: deferBreakTitle,
                 deferBreak: deferBreak,
-                clockOut: clockOut
+                pauseReminders: pauseReminders
             )
         )
         panel.setFrame(screen.frame, display: true)
@@ -49,7 +49,7 @@ final class OverlayController {
 
     func showTravel(
         acknowledge: @escaping () -> Void,
-        clockOut: @escaping () -> Void
+        pauseReminders: @escaping () -> Void
     ) {
         if panel != nil, mode != .travelRequired { hide() }
         guard panel == nil, let screen = NSScreen.main ?? NSScreen.screens.first else { return }
@@ -70,7 +70,7 @@ final class OverlayController {
         panel.contentViewController = NSHostingController(
             rootView: TravelRequiredView(
                 acknowledge: acknowledge,
-                clockOut: clockOut
+                pauseReminders: pauseReminders
             )
         )
         panel.setFrame(screen.frame, display: true)
@@ -88,9 +88,9 @@ final class OverlayController {
 }
 
 private struct TravelRequiredView: View {
-    @State private var isConfirmingClockOut = false
+    @State private var isConfirmingPause = false
     let acknowledge: () -> Void
-    let clockOut: () -> Void
+    let pauseReminders: () -> Void
 
     var body: some View {
         ZStack {
@@ -119,8 +119,8 @@ private struct TravelRequiredView: View {
                     .controlSize(.large)
                     .keyboardShortcut(.return, modifiers: [])
 
-                Button("Clock out instead") {
-                    isConfirmingClockOut = true
+                Button("Pause reminders") {
+                    isConfirmingPause = true
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.white.opacity(0.65))
@@ -128,19 +128,19 @@ private struct TravelRequiredView: View {
             .foregroundStyle(.white)
             .padding(48)
 
-            if isConfirmingClockOut {
+            if isConfirmingPause {
                 Color.black.opacity(0.72).ignoresSafeArea()
                 VStack(spacing: 18) {
-                    Text("Clock out?")
+                    Text("Pause reminders?")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("This ends the current work session.")
+                    Text("Reminders stay paused until you resume them.")
                         .foregroundStyle(.secondary)
-                    Button("Clock out", role: .destructive) {
-                        isConfirmingClockOut = false
-                        clockOut()
+                    Button("Pause reminders", role: .destructive) {
+                        isConfirmingPause = false
+                        pauseReminders()
                     }
                     .controlSize(.large)
-                    Button("Keep working") { isConfirmingClockOut = false }
+                    Button("Keep working") { isConfirmingPause = false }
                         .buttonStyle(.plain)
                 }
                 .padding(32)
@@ -163,12 +163,12 @@ private final class BreakOverlayPanel: NSPanel {
 }
 
 private struct BreakRequiredView: View {
-    @State private var isConfirmingClockOut = false
+    @State private var isConfirmingPause = false
     let startBreak: () -> Void
     let canDeferBreak: Bool
     let deferBreakTitle: String
     let deferBreak: () -> Void
-    let clockOut: () -> Void
+    let pauseReminders: () -> Void
 
     var body: some View {
         ZStack {
@@ -217,8 +217,8 @@ private struct BreakRequiredView: View {
                             .accessibilityHint("Delays this break once. The next reminder requires a break.")
                     }
 
-                    Button("Clock out instead") {
-                        isConfirmingClockOut = true
+                    Button("Pause reminders") {
+                        isConfirmingPause = true
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.white.opacity(0.65))
@@ -231,25 +231,25 @@ private struct BreakRequiredView: View {
             .foregroundStyle(.white)
             .padding(48)
 
-            if isConfirmingClockOut {
+            if isConfirmingPause {
                 Color.black.opacity(0.72)
                     .ignoresSafeArea()
 
                 VStack(spacing: 18) {
-                    Text("Clock out?")
+                    Text("Pause reminders?")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("This ends the current work session and dismisses break enforcement.")
+                    Text("Reminders stay paused until you resume them.")
                         .multilineTextAlignment(.center)
                         .foregroundStyle(.secondary)
 
-                    Button("Clock out", role: .destructive) {
-                        isConfirmingClockOut = false
-                        clockOut()
+                    Button("Pause reminders", role: .destructive) {
+                        isConfirmingPause = false
+                        pauseReminders()
                     }
                     .controlSize(.large)
 
                     Button("Keep working") {
-                        isConfirmingClockOut = false
+                        isConfirmingPause = false
                     }
                     .buttonStyle(.plain)
                 }

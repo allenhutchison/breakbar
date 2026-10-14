@@ -30,7 +30,7 @@ Before dispatching the `Release` workflow from `main`:
 
 1. Confirm CI passed for the release commit.
 2. Run `make test` and `make build` locally.
-3. Build and launch the release configuration locally, then verify clock-in/clock-out, the menu-bar countdown, Settings, calendar status, and Today’s history.
+3. Build and launch the release configuration locally, then verify automatic start, durable pause/resume, the menu-bar countdown, Settings, calendar updates, and travel reminders.
 4. Review `RELEASE_NOTES.md` and confirm the version with the maintainer.
 
 The workflow must finish signing, notarization, stapling, Gatekeeper assessment, checksum generation, and EdDSA appcast generation before it creates the GitHub release. A failure must leave no unsigned public artifact or partially published release. The published release must contain `BreakBar.zip`, `BreakBar.zip.sha256`, and `appcast.xml`; the app reads the appcast through GitHub's latest-release asset URL.
