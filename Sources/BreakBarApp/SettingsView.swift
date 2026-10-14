@@ -121,12 +121,12 @@ struct SettingsView: View {
 private struct PrivacyDataSettingsSection: View {
     var body: some View {
         Section("Privacy & Data") {
-            Text("BreakBar saves only its current timer and settings on this Mac. It has no analytics or cloud account.")
+            Text("BreakBar saves its current timer and settings on this Mac. History from earlier versions may remain stored locally. It has no analytics or cloud account.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("settings.privacy.explanation")
 
-            LabeledContent("Timer recovery", value: "Saved locally; no activity history is recorded")
+            LabeledContent("Timer recovery", value: "Saved locally; new activity history is not recorded")
             LabeledContent("Calendar", value: "Read only; event titles are not stored")
             LabeledContent("Live meetings", value: "Activity only; audio is never recorded")
         }
