@@ -78,6 +78,37 @@ final class AutomaticTimerTests: XCTestCase {
         }
     }
 
+    func testRemovingOrMovingUpcomingMeetingDoesNotWeakenRequiredBreak() {
+        for refreshedMeetings in [
+            [],
+            [BreakCalendarConstraint(
+                id: "meeting",
+                startAt: origin.addingTimeInterval(300),
+                endAt: origin.addingTimeInterval(400)
+            )],
+        ] {
+            var engine = BreakBarEngine(policy: policy)
+            _ = engine.handle(.resumeReminders, at: origin)
+            _ = engine.handle(.tick, at: origin.addingTimeInterval(60))
+            XCTAssertEqual(engine.state.enforcement, .required)
+            let upcoming = BreakCalendarConstraint(
+                id: "meeting",
+                startAt: origin.addingTimeInterval(75),
+                endAt: origin.addingTimeInterval(120)
+            )
+            _ = engine.handle(.updateCalendarConstraints([upcoming]), at: origin.addingTimeInterval(70))
+            XCTAssertEqual(engine.state.calendarMeetingStartsAt, upcoming.startAt)
+            XCTAssertEqual(engine.state.enforcement, .required)
+            let requiredDeadline = engine.state.focusDueAt
+            _ = engine.handle(.updateCalendarConstraints(refreshedMeetings), at: origin.addingTimeInterval(71))
+            XCTAssertEqual(engine.state.enforcement, .required)
+            XCTAssertEqual(engine.state.focusDueAt, requiredDeadline)
+            XCTAssertNotEqual(engine.state.breakPlanReason, .postMeetingWarning)
+            _ = engine.handle(.tick, at: origin.addingTimeInterval(72))
+            XCTAssertEqual(engine.state.enforcement, .required)
+        }
+    }
+
     func testDeletionDoesNotInterruptLiveCallAndCallEndGetsWarning() {
         var engine = BreakBarEngine(policy: policy)
         _ = engine.handle(.resumeReminders, at: origin)

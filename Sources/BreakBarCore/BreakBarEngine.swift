@@ -458,9 +458,12 @@ public struct BreakBarEngine: Sendable {
 
         // A refreshed calendar snapshot is authoritative. Release a removed,
         // moved, or shortened meeting without enforcing an overdue break abruptly.
+        let storedMeetingStarted = state.calendarMeetingStartsAt.map { $0 <= now } ?? false
         let releasedMeeting = !calendarMeetingIsActive
             && (state.scheduledMeetingStartedAt != nil
-                || (state.calendarMeetingEndsAt != nil && plan.meetingEndsAt == nil))
+                || (storedMeetingStarted
+                    && state.calendarMeetingEndsAt != nil
+                    && plan.meetingEndsAt == nil))
         if releasedMeeting, state.liveCallStartedAt == nil {
             state.calendarMeetingStartsAt = calendarMeetingStartsAt
             state.calendarMeetingEndsAt = calendarMeetingEndsAt
