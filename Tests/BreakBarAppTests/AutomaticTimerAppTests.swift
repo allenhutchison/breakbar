@@ -24,8 +24,7 @@ final class AutomaticTimerAppTests: XCTestCase {
         reopened.resumeReminders()
         XCTAssertEqual(reopened.state.phase, .focusing)
         let archive = try repository.completeHistory(exportedAt: date)
-        // Only the historical fixture is present; new timer activity adds no rows.
-        XCTAssertEqual(archive.sessions.count, 1)
-        XCTAssertEqual(archive.intervals.count, 1)
+        XCTAssertTrue(archive.sessions.isEmpty)
+        XCTAssertTrue(archive.intervals.isEmpty)
     }
 }
