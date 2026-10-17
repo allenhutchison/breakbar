@@ -1,5 +1,5 @@
 {
-  "originHash" : "d4b6db7b51b9c1827de95f77fa7a5e2dcf3b7be083a299eeef4e4267affb193a",
+  "originHash" : "1d8f81ba310422a2ee3c89a168458b5b1c956a55f3153144085c34e5ceac4881",
   "pins" : [
     {
       "identity" : "sparkle",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-protobuf.git",
       "state" : {
-        "revision" : "55d7a1cc5666b85c13464aea1c4b4a90feccb4c8",
-        "version" : "1.38.1"
+        "revision" : "3d537cb81aef272a03cb3be815439e9bf0eb3bd3",
+        "version" : "1.39.0"
       }
     }
   ],
