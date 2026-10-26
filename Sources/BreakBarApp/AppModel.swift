@@ -31,6 +31,7 @@ final class AppModel: ObservableObject {
     private let overlayController = OverlayController()
     private let diagnosticsWindowController = DiagnosticsWindowController()
     private let breakReturnPanelController = BreakReturnPanelController()
+    private let pausedReturnPanelController = PausedReturnPanelController()
     private var ticker: Task<Void, Never>?
     private var busyBarAccessory: BusyBarAccessory?
     private var busyBarConnectionTask: Task<Void, Never>?
@@ -195,6 +196,14 @@ final class AppModel: ObservableObject {
 
     func pauseReminders() {
         apply(.pauseReminders, at: isUITestMode ? now : Date())
+    }
+
+    func keepRemindersPaused() {
+        apply(.keepRemindersPaused, at: isUITestMode ? now : Date())
+    }
+
+    func prepareForSystemSleep() {
+        apply(.systemWillSleep, at: isUITestMode ? now : Date())
     }
 
     func startBreak() {
@@ -839,6 +848,16 @@ final class AppModel: ObservableObject {
         at date: Date,
         bringReturnPanelToFront: Bool = false
     ) {
+        if state.remindersPaused == true, state.pausedReturnPromptAt != nil {
+            pausedReturnPanelController.show(
+                bringToFront: bringReturnPanelToFront,
+                resume: { [weak self] in self?.resumeReminders() },
+                keepPaused: { [weak self] in self?.keepRemindersPaused() }
+            )
+        } else {
+            pausedReturnPanelController.hide()
+        }
+
         if state.phase == .traveling && state.enforcement == .travelRequired {
             overlayController.showTravel(
                 acknowledge: { [weak self] in self?.acknowledgeTravel() },

@@ -10,6 +10,6 @@ Maintainerd architecture audits read this file; edit it freely and review every 
 - Schema migrations are versioned, transactional, preserve existing history, and reject databases newer than the app understands.
 - A normal break cannot return to focus before its configured minimum; waking the Mac or exiting the screensaver never ends a break.
 - Active detected or manual meetings suppress visible break enforcement. Refreshed calendar deletions and shortened events must release stale suppression. An overdue meeting ends with a full warning period, not an immediate forced overlay.
-- Idle detection must not interrupt an active meeting or end a deliberate break before its minimum. Resume automatically after sufficient time away; short absences preserve the focus deadline. Explicit pause survives activity and restart.
+- Idle detection must not interrupt an active meeting or end a deliberate break before its minimum. Resume automatically after sufficient time away; short absences preserve the focus deadline. Explicit pause survives activity and restart. After a long idle or sleep interval, returning prompts to resume; only explicit confirmation starts a fresh cycle. Keeping reminders paused dismisses the prompt until another long absence.
 - Calendar data is read-only, microphone audio is never captured, and derived call state contains only the minimum identity needed for scheduling.
 - Every overlay has an accessible Mac-side safety escape; hardware or network failure can never trap the user.

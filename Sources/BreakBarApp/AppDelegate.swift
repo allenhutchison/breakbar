@@ -45,6 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
             switch launchConfiguration.uiTestScenario {
             case .automaticTimer:
                 model.observeActivity(idleDuration: 0, at: AppLaunchConfiguration.uiTestReferenceDate)
+            case .pausedReturn:
+                let date = AppLaunchConfiguration.uiTestReferenceDate
+                model.pauseReminders()
+                model.observeActivity(idleDuration: 600, at: date)
+                model.observeActivity(idleDuration: 0, at: date)
             case .settingsPrivacy:
                 showSettings()
             case nil:
@@ -184,6 +189,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     private func observeLifecycleChanges() {
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
+            selector: #selector(prepareForSystemSleep(_:)),
+            name: NSWorkspace.willSleepNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
             selector: #selector(reconcileAfterLifecycleChange(_:)),
             name: NSWorkspace.didWakeNotification,
             object: nil
@@ -223,6 +234,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     @objc private func reconcileAfterLifecycleChange(_ notification: Notification) {
         model.reconcileAfterLifecycleEvent()
         model.calendarMonitor.refresh()
+    }
+
+    @objc private func prepareForSystemSleep(_ notification: Notification) {
+        model.prepareForSystemSleep()
     }
 
     private func updateStatusItem(presentation: BreakBarPresentation? = nil) {
