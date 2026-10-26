@@ -4,6 +4,16 @@ import XCTest
 final class SettingsPrivacyUITests: XCTestCase {
     @MainActor
     func testPausedReturnPromptKeepsPauseOrResumes() throws {
+        try verifyPausedReturnPrompt(useKeyboard: false)
+    }
+
+    @MainActor
+    func testPausedReturnPromptSupportsReturnAndEscape() throws {
+        try verifyPausedReturnPrompt(useKeyboard: true)
+    }
+
+    @MainActor
+    private func verifyPausedReturnPrompt(useKeyboard: Bool) throws {
         let application = XCUIApplication(url: Self.defaultAppURL)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("BreakBarUITests-\(UUID().uuidString)", isDirectory: true)
@@ -20,7 +30,15 @@ final class SettingsPrivacyUITests: XCTestCase {
         continueAfterFailure = false
         let keepPaused = application.buttons["paused-return.keep-paused"]
         XCTAssertTrue(keepPaused.waitForExistence(timeout: 5))
-        keepPaused.click()
+        if useKeyboard {
+            let screenshot = XCTAttachment(screenshot: application.screenshot())
+            screenshot.name = "Paused return prompt"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            application.typeKey(.escape, modifierFlags: [])
+        } else {
+            keepPaused.click()
+        }
         XCTAssertFalse(keepPaused.exists)
         application.activate()
         application.menuBars.statusItems.firstMatch.click()
@@ -29,7 +47,11 @@ final class SettingsPrivacyUITests: XCTestCase {
         application.launch()
         let resume = application.buttons["paused-return.resume"]
         XCTAssertTrue(resume.waitForExistence(timeout: 5))
-        resume.click()
+        if useKeyboard {
+            application.typeKey(.return, modifierFlags: [])
+        } else {
+            resume.click()
+        }
         XCTAssertFalse(resume.exists)
         application.activate()
         application.menuBars.statusItems.firstMatch.click()

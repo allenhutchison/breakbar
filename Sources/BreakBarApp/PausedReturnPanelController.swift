@@ -11,7 +11,7 @@ final class PausedReturnPanelController {
         keepPaused: @escaping () -> Void
     ) {
         if let panel {
-            if bringToFront { panel.orderFrontRegardless() }
+            if bringToFront { present(panel) }
             return
         }
 
@@ -56,8 +56,14 @@ final class PausedReturnPanelController {
             .frame(width: 410, height: 220)
         )
         ModalPanelPositioning.center(panel)
-        panel.orderFrontRegardless()
+        present(panel)
         self.panel = panel
+    }
+
+    private func present(_ panel: NSPanel) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        panel.makeKeyAndOrderFront(nil)
+        panel.orderFrontRegardless()
     }
 
     func hide() {
