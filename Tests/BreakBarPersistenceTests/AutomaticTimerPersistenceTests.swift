@@ -16,11 +16,19 @@ final class AutomaticTimerPersistenceTests: XCTestCase {
         for (command, offset): (BreakCommand, Double) in [
             (.observeActivity(idleDuration: 0), 0), (.startBreak, 60),
             (.returnToFocus, 400), (.pauseReminders, 500),
+            (.observeActivity(idleDuration: 600), 1100),
         ] {
             let previous = engine.state
             XCTAssertEqual(engine.handle(command, at: origin.addingTimeInterval(offset)), .changed)
             try repository.commitTimerTransition(from: previous, to: engine.state)
         }
+        let recovered = try SessionRepository(url: url)
+        var restoredEngine = BreakBarEngine(state: try XCTUnwrap(recovered.loadState()))
+        let beforeReturn = restoredEngine.state
+        XCTAssertEqual(restoredEngine.handle(.observeActivity(idleDuration: 0), at: origin.addingTimeInterval(1200)), .changed)
+        XCTAssertNotNil(restoredEngine.state.pausedReturnPromptAt)
+        try recovered.commitTimerTransition(from: beforeReturn, to: restoredEngine.state)
+        engine = restoredEngine
         let reopened = try SessionRepository(url: url)
         XCTAssertEqual(try reopened.loadState(), engine.state)
         XCTAssertEqual(try reopened.loadState()?.remindersPaused, true)

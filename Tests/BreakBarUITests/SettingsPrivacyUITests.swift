@@ -3,6 +3,62 @@ import XCTest
 
 final class SettingsPrivacyUITests: XCTestCase {
     @MainActor
+    func testPausedReturnPromptKeepsPauseOrResumes() throws {
+        try verifyPausedReturnPrompt(useKeyboard: false)
+    }
+
+    @MainActor
+    func testPausedReturnPromptSupportsReturnAndEscape() throws {
+        try verifyPausedReturnPrompt(useKeyboard: true)
+    }
+
+    @MainActor
+    private func verifyPausedReturnPrompt(useKeyboard: Bool) throws {
+        let application = XCUIApplication(url: Self.defaultAppURL)
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BreakBarUITests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        application.launchArguments = [
+            "--ui-test", "--ui-test-scenario", "paused-return",
+            "--ui-test-database", directory.appendingPathComponent("timer.sqlite").path,
+        ]
+        application.launch()
+        defer {
+            application.terminate()
+            try? FileManager.default.removeItem(at: directory)
+        }
+        continueAfterFailure = false
+        let keepPaused = application.buttons["paused-return.keep-paused"]
+        XCTAssertTrue(keepPaused.waitForExistence(timeout: 5))
+        if useKeyboard {
+            let screenshot = XCTAttachment(screenshot: application.screenshot())
+            screenshot.name = "Paused return prompt"
+            screenshot.lifetime = .keepAlways
+            add(screenshot)
+            application.typeKey(.escape, modifierFlags: [])
+        } else {
+            keepPaused.click()
+        }
+        XCTAssertFalse(keepPaused.exists)
+        application.activate()
+        application.menuBars.statusItems.firstMatch.click()
+        XCTAssertTrue(application.staticTexts["Reminders paused"].waitForExistence(timeout: 3))
+        application.terminate()
+        application.launch()
+        let resume = application.buttons["paused-return.resume"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 5))
+        if useKeyboard {
+            application.typeKey(.return, modifierFlags: [])
+        } else {
+            resume.click()
+        }
+        XCTAssertFalse(resume.exists)
+        application.activate()
+        application.menuBars.statusItems.firstMatch.click()
+        XCTAssertTrue(application.buttons["timer.pause"].waitForExistence(timeout: 3))
+    }
+
+    @MainActor
     func testAutomaticTimerHasPauseAndResumeWithoutTrackingControls() throws {
         let application = XCUIApplication(url: Self.defaultAppURL)
         let directory = FileManager.default.temporaryDirectory

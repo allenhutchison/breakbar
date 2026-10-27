@@ -28,12 +28,51 @@ public struct BreakBarEngine: Sendable {
         case .resumeReminders:
             guard state.phase == .clockedOut || state.remindersPaused == true else { return .unchanged }
             state.remindersPaused = false
+            state.pausedIdleObservedAt = nil
+            state.pausedReturnPromptAt = nil
+            state.pausedSleepStartedAt = nil
             beginFocus(at: now, reason: .remindersResumed)
             return .changed
 
+        case .keepRemindersPaused:
+            guard state.remindersPaused == true, state.pausedReturnPromptAt != nil else {
+                return .unchanged
+            }
+            state.pausedIdleObservedAt = nil
+            state.pausedReturnPromptAt = nil
+            state.pausedSleepStartedAt = nil
+            state.revision &+= 1
+            return .changed
+
+        case .systemWillSleep:
+            guard state.remindersPaused == true, state.pausedSleepStartedAt == nil else {
+                return .unchanged
+            }
+            state.pausedSleepStartedAt = now
+            state.revision &+= 1
+            return .changed
+
         case let .observeActivity(idleDuration):
-            guard idleDuration.isFinite, idleDuration >= 0,
-                  state.remindersPaused != true else { return .unchanged }
+            guard idleDuration.isFinite, idleDuration >= 0 else { return .unchanged }
+            if state.remindersPaused == true {
+                guard state.pausedReturnPromptAt == nil else { return .unchanged }
+                let sleepStartedAt = state.pausedSleepStartedAt
+                let sleepDuration = sleepStartedAt.map { now.timeIntervalSince($0) } ?? 0
+                state.pausedSleepStartedAt = nil
+                var changed = sleepStartedAt != nil
+                if max(idleDuration, sleepDuration) >= policy.idleThreshold,
+                   state.pausedIdleObservedAt == nil {
+                    state.pausedIdleObservedAt = now
+                    changed = true
+                }
+                if idleDuration < 2, state.pausedIdleObservedAt != nil {
+                    state.pausedReturnPromptAt = now
+                    changed = true
+                }
+                guard changed else { return .unchanged }
+                state.revision &+= 1
+                return .changed
+            }
             if state.phase == .focusing {
                 return idleDuration >= min(policy.idleThreshold, policy.minimumBreakDuration)
                     ? handle(.idleThresholdReached(idleStartedAt: now.addingTimeInterval(-idleDuration)), at: now)

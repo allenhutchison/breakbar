@@ -96,6 +96,9 @@ public struct BreakBarState: Codable, Equatable, Sendable {
     public var lastTransitionReason: BreakTransitionReason?
     // Missing in snapshots from versions with explicit work sessions.
     public var remindersPaused: Bool?
+    public var pausedIdleObservedAt: Date?
+    public var pausedReturnPromptAt: Date?
+    public var pausedSleepStartedAt: Date?
     public var revision: UInt64
 
     public var canDeferBreak: Bool {
@@ -124,6 +127,9 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         travelChain: [BreakCalendarConstraint]? = nil,
         lastTransitionReason: BreakTransitionReason? = nil,
         remindersPaused: Bool? = nil,
+        pausedIdleObservedAt: Date? = nil,
+        pausedReturnPromptAt: Date? = nil,
+        pausedSleepStartedAt: Date? = nil,
         revision: UInt64 = 0
     ) {
         self.phase = phase
@@ -146,6 +152,9 @@ public struct BreakBarState: Codable, Equatable, Sendable {
         self.travelChain = travelChain
         self.lastTransitionReason = lastTransitionReason
         self.remindersPaused = remindersPaused
+        self.pausedIdleObservedAt = pausedIdleObservedAt
+        self.pausedReturnPromptAt = pausedReturnPromptAt
+        self.pausedSleepStartedAt = pausedSleepStartedAt
         self.revision = revision
     }
 }
@@ -153,6 +162,8 @@ public struct BreakBarState: Codable, Equatable, Sendable {
 public enum BreakCommand: Equatable, Sendable {
     case pauseReminders
     case resumeReminders
+    case keepRemindersPaused
+    case systemWillSleep
     case observeActivity(idleDuration: TimeInterval)
     case clockIn
     case clockOut

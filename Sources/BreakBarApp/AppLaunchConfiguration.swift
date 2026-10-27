@@ -9,6 +9,7 @@ struct AppLaunchConfiguration: Equatable {
 
     enum UITestScenario: String, Equatable {
         case automaticTimer = "automatic-timer"
+        case pausedReturn = "paused-return"
         case settingsPrivacy = "settings-privacy"
     }
 
