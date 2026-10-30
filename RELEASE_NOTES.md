@@ -1,12 +1,12 @@
-# BreakBar 0.10.1
+# BreakBar 0.10.2
 
-BreakBar 0.10.1 helps you remember to turn break reminders back on after leaving your desk.
+BreakBar 0.10.2 counts your break when you leave your desk without clicking the full-screen prompt.
 
 ## Highlights
 
-- After reminders have been paused and you return from at least 10 minutes idle or asleep, BreakBar asks whether you want to resume reminders.
-- Choose **Resume reminders** to start a fresh focus cycle, or **Keep paused** to dismiss the prompt until your next long absence. Reminders stay paused until you choose to resume, including after restarting the app.
-- The return prompt supports both mouse and keyboard: press Return to resume or Escape to keep reminders paused.
+- When a break is required, 30 seconds without input starts the break automatically, with a shorter threshold for shorter break settings. Time since your last input counts toward the minimum break.
+- Returning before the minimum break is complete leaves the remaining time to finish. Returning afterward starts a fresh focus cycle. The credited break time survives an app restart.
+- Automatic breaks pause supported media players and start the screensaver, just like breaks started with the button.
 
 ## Requirements
 
