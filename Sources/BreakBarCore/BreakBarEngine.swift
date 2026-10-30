@@ -74,7 +74,12 @@ public struct BreakBarEngine: Sendable {
                 return .changed
             }
             if state.phase == .focusing {
-                return idleDuration >= min(policy.idleThreshold, policy.minimumBreakDuration)
+                let threshold = min(policy.idleThreshold, policy.minimumBreakDuration)
+                // Leaving the required-break prompt is enough to start a break.
+                // Brief pauses in input should not dismiss it, and the last
+                // input time must count toward the minimum once away is detected.
+                let detectionThreshold = state.enforcement == .required ? min(30, threshold) : threshold
+                return idleDuration >= detectionThreshold
                     ? handle(.idleThresholdReached(idleStartedAt: now.addingTimeInterval(-idleDuration)), at: now)
                     : .unchanged
             }
@@ -224,6 +229,10 @@ public struct BreakBarEngine: Sendable {
                   !meetingIsActive(at: now)
             else {
                 return .unchanged
+            }
+            if state.enforcement == .required {
+                let startedAt = min(now, max(state.phaseStartedAt ?? now, idleStartedAt))
+                return startBreak(at: startedAt, reason: .idleThresholdReached)
             }
             beginAway(idleStartedAt: idleStartedAt, observedAt: now)
             return .changed
