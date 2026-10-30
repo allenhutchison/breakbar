@@ -28,6 +28,7 @@ final class AppModel: ObservableObject {
 
     private var engine: BreakBarEngine
     private let repository: SessionRepository?
+    private let breakStartActions: () -> String?
     private let overlayController = OverlayController()
     private let diagnosticsWindowController = DiagnosticsWindowController()
     private let breakReturnPanelController = BreakReturnPanelController()
@@ -44,7 +45,16 @@ final class AppModel: ObservableObject {
     private var busyBarLastInputAt: Date?
     private var observations = Set<AnyCancellable>()
 
-    init(configuration: AppLaunchConfiguration = .current) {
+    init(
+        configuration: AppLaunchConfiguration = .current,
+        breakStartActions: (() -> String?)? = nil
+    ) {
+        self.breakStartActions = breakStartActions ?? {
+            guard configuration.allowsLiveIntegrations else { return nil }
+            let message = MediaPlaybackController.pauseRunningPlayers()
+            SystemActions.startScreensaver()
+            return message
+        }
         isDemoMode = configuration.isDemoMode
         isUITestMode = configuration.isUITestMode
         calendarMonitor = CalendarMonitor(monitoringEnabled: configuration.allowsLiveIntegrations)
@@ -207,7 +217,7 @@ final class AppModel: ObservableObject {
     }
 
     func startBreak() {
-        beginBreak(with: .startBreak)
+        apply(.startBreak)
     }
 
     func deferBreak() {
@@ -245,14 +255,6 @@ final class AppModel: ObservableObject {
             applyCurrentCalendarConstraints(at: eventDate)
             applyCurrentCallActivity(at: eventDate)
         }
-    }
-
-    private func beginBreak(with command: BreakCommand) {
-        guard apply(command) == .changed else { return }
-        if let mediaMessage = MediaPlaybackController.pauseRunningPlayers() {
-            lastMessage = mediaMessage
-        }
-        SystemActions.startScreensaver()
     }
 
     func clearMessage() {
@@ -830,6 +832,11 @@ final class AppModel: ObservableObject {
             )
         }
         synchronizeWindows(at: eventDate)
+        if result == .changed, previousState.phase == .focusing, state.phase == .onBreak {
+            if let mediaMessage = breakStartActions() {
+                lastMessage = mediaMessage
+            }
+        }
         return result
     }
 
